@@ -11,17 +11,23 @@ A decentralized expense tracking system built on Hyperledger Besu with automatic
    chmod +x scripts/*.sh
    ./scripts/setup.sh
 
-Start the Network
-chage the dir to docker dir
-```docker-compose up -d```
+2. **Start the Network**
+   chage the dir to docker dir
+   ```bash
+   docker-compose up -d
+   ```
 
-install ganache then run 
-```ganache-cli --port 8545 --accounts 10 --deterministic --gasLimit 10000000```
+3. **install ganache then run** 
+   ```bash
+      ganache-cli --port 8545 --accounts 10 --deterministic --gasLimit 10000000
+   ```
 
-deploy contracts 
+5. **deploy contracts** 
 ```./scripts/deploy-contracts.sh```
-now change the folder to api and run
-```node blockchain-api.js```
+6.  **now change the folder to api and run**
+   ```bash
+      node blockchain-api.js
+   ```
 
 Network Architecture
 
