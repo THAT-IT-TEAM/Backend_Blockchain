@@ -1,0 +1,74 @@
+{
+    "networks": {
+      "local": {
+        "host": "127.0.0.1",
+        "port": 8545,
+        "chainId": 1337,
+        "networkId": "local",
+        "gasLimit": 8000000,
+        "gasPrice": "20000000000",
+        "accounts": {
+          "mnemonic": "test test test test test test test test test test test junk",
+          "count": 10,
+          "accountsBalance": "1000000000000000000000"
+        }
+      },
+      "testnet": {
+        "host": "testnet.yourdomain.com",
+        "port": 443,
+        "chainId": 12345,
+        "networkId": "testnet",
+        "gasLimit": 8000000,
+        "gasPrice": "20000000000",
+        "ssl": true,
+        "timeout": 20000
+      },
+      "mainnet": {
+        "host": "mainnet.yourdomain.com", 
+        "port": 443,
+        "chainId": 1,
+        "networkId": "mainnet",
+        "gasLimit": 8000000,
+        "gasPrice": "20000000000",
+        "ssl": true,
+        "timeout": 20000
+      }
+    },
+    "contracts": {
+      "deploymentGasLimit": 6000000,
+      "defaultGasPrice": "20000000000",
+      "confirmations": 2,
+      "autoGasMultiplier": 1.25
+    },
+    "mining": {
+      "enabled": true,
+      "blockTime": 2,
+      "difficulty": "0x1"
+    },
+    "consensus": {
+      "algorithm": "proof-of-work",
+      "blockReward": "5000000000000000000",
+      "targetBlockTime": 15
+    },
+    "p2p": {
+      "maxPeers": 50,
+      "port": 30303,
+      "bootNodes": [
+        "enode://example1@127.0.0.1:30303",
+        "enode://example2@127.0.0.1:30304"
+      ]
+    },
+    "rpc": {
+      "enabled": true,
+      "host": "127.0.0.1",
+      "port": 8545,
+      "cors": ["*"],
+      "apis": ["eth", "net", "web3", "personal", "miner"]
+    },
+    "websocket": {
+      "enabled": true,
+      "host": "127.0.0.1", 
+      "port": 8546,
+      "apis": ["eth", "net", "web3"]
+    }
+  }

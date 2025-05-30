@@ -1,0 +1,25 @@
+{
+    "name": "expense-tracker-blockchain-api",
+    "version": "1.0.0",
+    "description": "Blockchain API for Multi-Vendor Expense Tracker",
+    "main": "blockchain-api.js",
+    "scripts": {
+      "start": "node blockchain-api.js",
+      "dev": "nodemon blockchain-api.js",
+      "test": "jest"
+    },
+    "dependencies": {
+      "express": "5.1.0",
+      "web3": "^4.2.0",
+      "cors": "^2.8.5",
+      "helmet": "8.1.0",
+      "morgan": "^1.10.0",
+      "dotenv": "^16.3.1",
+      "multer": "2.0.0",
+      "ipfs-http-client": "^60.0.1"
+    },
+    "devDependencies": {
+      "nodemon": "^3.0.1",
+      "jest": "^29.7.0"
+    }
+  }

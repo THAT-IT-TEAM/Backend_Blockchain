@@ -1,0 +1,17 @@
+{
+  "network": "development",
+  "chainId": 1337,
+  "deployedAt": "2025-05-30T13:34:43.720Z",
+  "deployer": "0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1",
+  "contracts": {
+    "UserRegistry": {
+      "address": "0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B"
+    },
+    "VendorRegistry": {
+      "address": "0xC89Ce4735882C9F0f0FE26686c53074E09B0D550"
+    },
+    "ExpenseTracker": {
+      "address": "0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb"
+    }
+  }
+}
