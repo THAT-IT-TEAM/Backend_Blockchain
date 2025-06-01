@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "./VendorRegistry.sol";
+import "./CompanyRegistry.sol";
 import "./UserRegistry.sol";
 
 contract ExpenseTracker {
-    VendorRegistry public vendorRegistry;
+    CompanyRegistry public companyRegistry;
     UserRegistry public userRegistry;
     
     struct Expense {
         uint256 id;
         address user;
-        address vendor;
+        address companyAddress;
         uint256 amount;
         string category;
         string description;
@@ -30,7 +30,6 @@ contract ExpenseTracker {
     
     mapping(uint256 => Expense) public expenses;
     mapping(address => uint256[]) public userExpenses;
-    mapping(address => uint256[]) public vendorExpenses;
     mapping(uint256 => Reimbursement) public reimbursements;
     
     uint256 public expenseCounter;
@@ -39,7 +38,7 @@ contract ExpenseTracker {
     event ExpenseCreated(
         uint256 indexed expenseId,
         address indexed user,
-        address indexed vendor,
+        address indexed company,
         uint256 amount,
         string category
     );
@@ -54,29 +53,24 @@ contract ExpenseTracker {
         _;
     }
     
-    modifier onlyRegisteredVendor() {
-        require(vendorRegistry.isRegisteredVendor(msg.sender), "Vendor not registered");
-        _;
-    }
-    
     modifier onlyAdmin() {
         require(userRegistry.isAdmin(msg.sender), "Only admin can perform this action");
         _;
     }
     
-    constructor(address _vendorRegistry, address _userRegistry) {
-        vendorRegistry = VendorRegistry(_vendorRegistry);
+    constructor(address _companyRegistry, address _userRegistry) {
+        companyRegistry = CompanyRegistry(_companyRegistry);
         userRegistry = UserRegistry(_userRegistry);
     }
     
     function createExpense(
-        address vendor,
+        address companyAddress,
         uint256 amount,
         string memory category,
         string memory description,
         string memory receiptHash
     ) external onlyRegisteredUser {
-        require(vendorRegistry.isRegisteredVendor(vendor), "Vendor not registered");
+        require(companyRegistry.isRegisteredCompany(companyAddress), "Company not registered");
         require(amount > 0, "Amount must be greater than 0");
         
         expenseCounter++;
@@ -84,7 +78,7 @@ contract ExpenseTracker {
         expenses[expenseCounter] = Expense({
             id: expenseCounter,
             user: msg.sender,
-            vendor: vendor,
+            companyAddress: companyAddress,
             amount: amount,
             category: category,
             description: description,
@@ -95,9 +89,8 @@ contract ExpenseTracker {
         });
         
         userExpenses[msg.sender].push(expenseCounter);
-        vendorExpenses[vendor].push(expenseCounter);
         
-        emit ExpenseCreated(expenseCounter, msg.sender, vendor, amount, category);
+        emit ExpenseCreated(expenseCounter, msg.sender, companyAddress, amount, category);
     }
     
     function approveExpense(uint256 expenseId) external onlyAdmin {
@@ -117,8 +110,8 @@ contract ExpenseTracker {
         
         expenses[expenseId].isPaid = true;
         
-        // Transfer payment to vendor
-        payable(expenses[expenseId].vendor).transfer(expenses[expenseId].amount);
+        // Transfer payment to user (reimbursement model)
+        payable(expenses[expenseId].user).transfer(expenses[expenseId].amount);
         
         // Refund excess payment
         if (msg.value > expenses[expenseId].amount) {
@@ -132,7 +125,6 @@ contract ExpenseTracker {
         require(expenses[expenseId].id != 0, "Expense does not exist");
         require(expenses[expenseId].user == msg.sender, "Not your expense");
         require(expenses[expenseId].isApproved, "Expense not approved");
-        require(!expenses[expenseId].isPaid, "Expense already paid");
         
         reimbursementCounter++;
         
@@ -173,10 +165,6 @@ contract ExpenseTracker {
     
     function getUserExpenses(address user) external view returns (uint256[] memory) {
         return userExpenses[user];
-    }
-    
-    function getVendorExpenses(address vendor) external view returns (uint256[] memory) {
-        return vendorExpenses[vendor];
     }
     
     function getExpensesByCategory(string memory category) external view returns (uint256[] memory) {

@@ -24,25 +24,52 @@ try {
         fs.readFileSync(path.join(__dirname, '..', 'config', 'deployed-contracts.json'), 'utf8')
     );
     
-    contracts.userRegistry = new web3.eth.Contract(
-        deployedContracts.userRegistry.abi,
-        deployedContracts.userRegistry.address
-    );
-    
-    contracts.vendorRegistry = new web3.eth.Contract(
-        deployedContracts.vendorRegistry.abi,
-        deployedContracts.vendorRegistry.address
-    );
-    
-    contracts.expenseTracker = new web3.eth.Contract(
-        deployedContracts.expenseTracker.abi,
-        deployedContracts.expenseTracker.address
-    );
-    
+    // Check if contracts object exists and has expected structure
+    if (!deployedContracts || !deployedContracts.contracts) {
+        throw new Error("Invalid deployed-contracts.json structure");
+    }
+
+    const contractAddressesAndAbis = deployedContracts.contracts;
+
+    // Instantiate contracts using addresses and ABIs from the JSON
+    if (contractAddressesAndAbis.UserRegistry) {
+        contracts.userRegistry = new web3.eth.Contract(
+            contractAddressesAndAbis.UserRegistry.abi,
+            contractAddressesAndAbis.UserRegistry.address
+        );
+    }
+
+    if (contractAddressesAndAbis.CompanyRegistry) { // Changed from VendorRegistry
+        contracts.companyRegistry = new web3.eth.Contract(
+            contractAddressesAndAbis.CompanyRegistry.abi,
+            contractAddressesAndAbis.CompanyRegistry.address
+        );
+    }
+
+    if (contractAddressesAndAbis.ExpenseTracker) {
+        contracts.expenseTracker = new web3.eth.Contract(
+            contractAddressesAndAbis.ExpenseTracker.abi,
+            contractAddressesAndAbis.ExpenseTracker.address
+        );
+    }
+
+    if (contractAddressesAndAbis.TripRegistry) { // Added TripRegistry
+        contracts.tripRegistry = new web3.eth.Contract(
+            contractAddressesAndAbis.TripRegistry.abi,
+            contractAddressesAndAbis.TripRegistry.address
+        );
+    }
+
+    // Check if essential contracts are loaded (optional but good practice)
+    if (!contracts.userRegistry || !contracts.companyRegistry || !contracts.expenseTracker || !contracts.tripRegistry) {
+         console.warn("One or more essential contracts could not be loaded.");
+         // Depending on requirements, you might throw an error here instead
+    }
+
     console.log('Smart contracts loaded successfully');
 } catch (error) {
     console.error('Failed to load smart contracts:', error.message);
-    console.log('Make sure contracts are deployed first');
+    console.log('Make sure contracts are deployed first and deployed-contracts.json is correct.');
 }
 
 // Middleware

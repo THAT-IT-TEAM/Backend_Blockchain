@@ -3,7 +3,7 @@
   "rpcUrl": "http://localhost:8545",
   "contracts": {
     "UserRegistry": {
-      "address": "0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B",
+      "address": "0xe78A0F7E598Cc8b0Bb87894B0F60dD2a88d6a8Ab",
       "abi": [
         {
           "inputs": [],
@@ -400,8 +400,8 @@
         }
       ]
     },
-    "VendorRegistry": {
-      "address": "0xC89Ce4735882C9F0f0FE26686c53074E09B0D550",
+    "CompanyRegistry": {
+      "address": "0x5b1869D9A4C187F2EAa108f3062412ecf0526b24",
       "abi": [
         {
           "inputs": [],
@@ -414,11 +414,11 @@
             {
               "indexed": true,
               "internalType": "address",
-              "name": "vendor",
+              "name": "company",
               "type": "address"
             }
           ],
-          "name": "VendorActivated",
+          "name": "CompanyActivated",
           "type": "event"
         },
         {
@@ -427,11 +427,11 @@
             {
               "indexed": true,
               "internalType": "address",
-              "name": "vendor",
+              "name": "company",
               "type": "address"
             }
           ],
-          "name": "VendorDeactivated",
+          "name": "CompanyDeactivated",
           "type": "event"
         },
         {
@@ -440,7 +440,7 @@
             {
               "indexed": true,
               "internalType": "address",
-              "name": "vendor",
+              "name": "company",
               "type": "address"
             },
             {
@@ -456,18 +456,18 @@
               "type": "string"
             }
           ],
-          "name": "VendorRegistered",
+          "name": "CompanyRegistered",
           "type": "event"
         },
         {
           "inputs": [
             {
               "internalType": "address",
-              "name": "vendorAddress",
+              "name": "companyAddress",
               "type": "address"
             }
           ],
-          "name": "activateVendor",
+          "name": "activateCompany",
           "outputs": [],
           "stateMutability": "nonpayable",
           "type": "function"
@@ -489,205 +489,15 @@
           "inputs": [
             {
               "internalType": "address",
-              "name": "vendorAddress",
+              "name": "",
               "type": "address"
             }
           ],
-          "name": "deactivateVendor",
-          "outputs": [],
-          "stateMutability": "nonpayable",
-          "type": "function"
-        },
-        {
-          "inputs": [],
-          "name": "getAllVendors",
-          "outputs": [
-            {
-              "internalType": "address[]",
-              "name": "",
-              "type": "address[]"
-            }
-          ],
-          "stateMutability": "view",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "address",
-              "name": "vendorAddress",
-              "type": "address"
-            }
-          ],
-          "name": "getVendor",
-          "outputs": [
-            {
-              "components": [
-                {
-                  "internalType": "address",
-                  "name": "vendorAddress",
-                  "type": "address"
-                },
-                {
-                  "internalType": "string",
-                  "name": "name",
-                  "type": "string"
-                },
-                {
-                  "internalType": "string",
-                  "name": "category",
-                  "type": "string"
-                },
-                {
-                  "internalType": "string",
-                  "name": "contactInfo",
-                  "type": "string"
-                },
-                {
-                  "internalType": "bool",
-                  "name": "isActive",
-                  "type": "bool"
-                },
-                {
-                  "internalType": "uint256",
-                  "name": "registrationTime",
-                  "type": "uint256"
-                },
-                {
-                  "internalType": "uint256",
-                  "name": "totalTransactions",
-                  "type": "uint256"
-                },
-                {
-                  "internalType": "uint256",
-                  "name": "totalAmount",
-                  "type": "uint256"
-                }
-              ],
-              "internalType": "struct VendorRegistry.Vendor",
-              "name": "",
-              "type": "tuple"
-            }
-          ],
-          "stateMutability": "view",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "string",
-              "name": "category",
-              "type": "string"
-            }
-          ],
-          "name": "getVendorsByCategory",
-          "outputs": [
-            {
-              "internalType": "address[]",
-              "name": "",
-              "type": "address[]"
-            }
-          ],
-          "stateMutability": "view",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "address",
-              "name": "vendorAddress",
-              "type": "address"
-            }
-          ],
-          "name": "isRegisteredVendor",
-          "outputs": [
-            {
-              "internalType": "bool",
-              "name": "",
-              "type": "bool"
-            }
-          ],
-          "stateMutability": "view",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "address",
-              "name": "vendorAddress",
-              "type": "address"
-            },
-            {
-              "internalType": "string",
-              "name": "name",
-              "type": "string"
-            },
-            {
-              "internalType": "string",
-              "name": "category",
-              "type": "string"
-            },
-            {
-              "internalType": "string",
-              "name": "contactInfo",
-              "type": "string"
-            }
-          ],
-          "name": "registerVendor",
-          "outputs": [],
-          "stateMutability": "nonpayable",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "address",
-              "name": "vendorAddress",
-              "type": "address"
-            },
-            {
-              "internalType": "uint256",
-              "name": "amount",
-              "type": "uint256"
-            }
-          ],
-          "name": "updateVendorStats",
-          "outputs": [],
-          "stateMutability": "nonpayable",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "uint256",
-              "name": "",
-              "type": "uint256"
-            }
-          ],
-          "name": "vendorList",
+          "name": "companies",
           "outputs": [
             {
               "internalType": "address",
-              "name": "",
-              "type": "address"
-            }
-          ],
-          "stateMutability": "view",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "address",
-              "name": "",
-              "type": "address"
-            }
-          ],
-          "name": "vendors",
-          "outputs": [
-            {
-              "internalType": "address",
-              "name": "vendorAddress",
+              "name": "companyAddress",
               "type": "address"
             },
             {
@@ -742,7 +552,7 @@
               "type": "uint256"
             }
           ],
-          "name": "vendorsByCategory",
+          "name": "companiesByCategory",
           "outputs": [
             {
               "internalType": "address",
@@ -752,17 +562,458 @@
           ],
           "stateMutability": "view",
           "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "name": "companyList",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "companyAddress",
+              "type": "address"
+            }
+          ],
+          "name": "deactivateCompany",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "getAllCompanies",
+          "outputs": [
+            {
+              "internalType": "address[]",
+              "name": "",
+              "type": "address[]"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "string",
+              "name": "category",
+              "type": "string"
+            }
+          ],
+          "name": "getCompaniesByCategory",
+          "outputs": [
+            {
+              "internalType": "address[]",
+              "name": "",
+              "type": "address[]"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "companyAddress",
+              "type": "address"
+            }
+          ],
+          "name": "getCompany",
+          "outputs": [
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "companyAddress",
+                  "type": "address"
+                },
+                {
+                  "internalType": "string",
+                  "name": "name",
+                  "type": "string"
+                },
+                {
+                  "internalType": "string",
+                  "name": "category",
+                  "type": "string"
+                },
+                {
+                  "internalType": "string",
+                  "name": "contactInfo",
+                  "type": "string"
+                },
+                {
+                  "internalType": "bool",
+                  "name": "isActive",
+                  "type": "bool"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "registrationTime",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "totalTransactions",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "totalAmount",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct CompanyRegistry.Company",
+              "name": "",
+              "type": "tuple"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "companyAddress",
+              "type": "address"
+            }
+          ],
+          "name": "isRegisteredCompany",
+          "outputs": [
+            {
+              "internalType": "bool",
+              "name": "",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "companyAddress",
+              "type": "address"
+            },
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "category",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "contactInfo",
+              "type": "string"
+            }
+          ],
+          "name": "registerCompany",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "companyAddress",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "amount",
+              "type": "uint256"
+            }
+          ],
+          "name": "updateCompanyStats",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
         }
       ]
     },
-    "ExpenseTracker": {
-      "address": "0xD833215cBcc3f914bD1C9ece3EE7BF8B14f841bb",
+    "TripRegistry": {
+      "address": "0xCfEB869F69431e42cdB54A4F4f105C19C080A601",
       "abi": [
         {
           "inputs": [
             {
               "internalType": "address",
-              "name": "_vendorRegistry",
+              "name": "_companyRegistry",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "constructor"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "tripId",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "company",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "string",
+              "name": "destination",
+              "type": "string"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "startDate",
+              "type": "uint256"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "endDate",
+              "type": "uint256"
+            }
+          ],
+          "name": "TripCreated",
+          "type": "event"
+        },
+        {
+          "inputs": [],
+          "name": "companyRegistry",
+          "outputs": [
+            {
+              "internalType": "contract CompanyRegistry",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "name": "companyTrips",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address[]",
+              "name": "_participants",
+              "type": "address[]"
+            },
+            {
+              "internalType": "string",
+              "name": "_destination",
+              "type": "string"
+            },
+            {
+              "internalType": "uint256",
+              "name": "_startDate",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "_endDate",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "_budget",
+              "type": "uint256"
+            }
+          ],
+          "name": "createTrip",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "_companyAddress",
+              "type": "address"
+            }
+          ],
+          "name": "getCompanyTrips",
+          "outputs": [
+            {
+              "internalType": "uint256[]",
+              "name": "",
+              "type": "uint256[]"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "_tripId",
+              "type": "uint256"
+            }
+          ],
+          "name": "getTrip",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "id",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "companyAddress",
+              "type": "address"
+            },
+            {
+              "internalType": "address[]",
+              "name": "participants",
+              "type": "address[]"
+            },
+            {
+              "internalType": "string",
+              "name": "destination",
+              "type": "string"
+            },
+            {
+              "internalType": "uint256",
+              "name": "startDate",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "endDate",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "budget",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bool",
+              "name": "isActive",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "name": "trips",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "id",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "companyAddress",
+              "type": "address"
+            },
+            {
+              "internalType": "string",
+              "name": "destination",
+              "type": "string"
+            },
+            {
+              "internalType": "uint256",
+              "name": "startDate",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "endDate",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "budget",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bool",
+              "name": "isActive",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        }
+      ]
+    },
+    "ExpenseTracker": {
+      "address": "0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B",
+      "abi": [
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "_companyRegistry",
               "type": "address"
             },
             {
@@ -811,7 +1062,7 @@
             {
               "indexed": true,
               "internalType": "address",
-              "name": "vendor",
+              "name": "company",
               "type": "address"
             },
             {
@@ -895,10 +1146,23 @@
           "type": "function"
         },
         {
+          "inputs": [],
+          "name": "companyRegistry",
+          "outputs": [
+            {
+              "internalType": "contract CompanyRegistry",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
           "inputs": [
             {
               "internalType": "address",
-              "name": "vendor",
+              "name": "companyAddress",
               "type": "address"
             },
             {
@@ -962,7 +1226,7 @@
             },
             {
               "internalType": "address",
-              "name": "vendor",
+              "name": "companyAddress",
               "type": "address"
             },
             {
@@ -1028,7 +1292,7 @@
                 },
                 {
                   "internalType": "address",
-                  "name": "vendor",
+                  "name": "companyAddress",
                   "type": "address"
                 },
                 {
@@ -1103,25 +1367,6 @@
             }
           ],
           "name": "getUserExpenses",
-          "outputs": [
-            {
-              "internalType": "uint256[]",
-              "name": "",
-              "type": "uint256[]"
-            }
-          ],
-          "stateMutability": "view",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "address",
-              "name": "vendor",
-              "type": "address"
-            }
-          ],
-          "name": "getVendorExpenses",
           "outputs": [
             {
               "internalType": "uint256[]",
@@ -1248,43 +1493,6 @@
           "outputs": [
             {
               "internalType": "contract UserRegistry",
-              "name": "",
-              "type": "address"
-            }
-          ],
-          "stateMutability": "view",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "address",
-              "name": "",
-              "type": "address"
-            },
-            {
-              "internalType": "uint256",
-              "name": "",
-              "type": "uint256"
-            }
-          ],
-          "name": "vendorExpenses",
-          "outputs": [
-            {
-              "internalType": "uint256",
-              "name": "",
-              "type": "uint256"
-            }
-          ],
-          "stateMutability": "view",
-          "type": "function"
-        },
-        {
-          "inputs": [],
-          "name": "vendorRegistry",
-          "outputs": [
-            {
-              "internalType": "contract VendorRegistry",
               "name": "",
               "type": "address"
             }

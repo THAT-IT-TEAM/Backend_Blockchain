@@ -1,0 +1,19 @@
+# Node.js dependencies
+node_modules/
+
+# Build artifacts
+build/
+
+# Deployed contract information (generated)
+config/deployed-contracts.json
+
+# Log files
+logs/
+*.log
+
+# Environment variables
+.env
+
+# OS generated files
+.DS_Store
+Thumbs.db 

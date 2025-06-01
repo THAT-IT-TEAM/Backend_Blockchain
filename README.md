@@ -19,6 +19,7 @@ A decentralized expense tracking system built on Hyperledger Besu with automatic
 
 3. **install ganache then run** 
    ```bash
+      npm install -g ganache-cli
       ganache-cli --port 8545 --accounts 10 --deterministic --gasLimit 10000000
    ```
 

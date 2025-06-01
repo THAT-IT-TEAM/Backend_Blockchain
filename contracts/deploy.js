@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const solc = require('solc');
-const { Web3 } = require('web3');
+const Web3 = require('web3');
 
 // Configuration
 const RPC_URL = 'http://localhost:8545';
@@ -71,21 +71,30 @@ async function main() {
             deployerAccount
         );
         
-        // 2. Deploy VendorRegistry
-        console.log('Deploying VendorRegistry...');
-        const vendorRegistry = await deployContract(
-            'VendorRegistry',
-            compiledContracts.VendorRegistry,
+        // 2. Deploy CompanyRegistry
+        console.log('Deploying CompanyRegistry...');
+        const companyRegistry = await deployContract(
+            'CompanyRegistry',
+            compiledContracts.CompanyRegistry,
             [],
             deployerAccount
         );
         
-        // 3. Deploy ExpenseTracker with registry addresses
+        // 3. Deploy TripRegistry
+        console.log('Deploying TripRegistry...');
+        const tripRegistry = await deployContract(
+            'TripRegistry',
+            compiledContracts.TripRegistry,
+            [companyRegistry.options.address],
+            deployerAccount
+        );
+        
+        // 4. Deploy ExpenseTracker with registry addresses
         console.log('Deploying ExpenseTracker...');
         const expenseTracker = await deployContract(
             'ExpenseTracker',
             compiledContracts.ExpenseTracker,
-            [userRegistry.options.address, vendorRegistry.options.address],
+            [companyRegistry.options.address, userRegistry.options.address],
             deployerAccount
         );
         
@@ -98,27 +107,36 @@ async function main() {
             contracts: {
                 UserRegistry: {
                     address: userRegistry.options.address,
-                    transactionHash: userRegistry.transactionHash
+                    transactionHash: userRegistry.transactionHash,
+                    abi: compiledContracts.UserRegistry.abi
                 },
-                VendorRegistry: {
-                    address: vendorRegistry.options.address,
-                    transactionHash: vendorRegistry.transactionHash
+                CompanyRegistry: {
+                    address: companyRegistry.options.address,
+                    transactionHash: companyRegistry.transactionHash,
+                    abi: compiledContracts.CompanyRegistry.abi
+                },
+                TripRegistry: {
+                    address: tripRegistry.options.address,
+                    transactionHash: tripRegistry.transactionHash,
+                    abi: compiledContracts.TripRegistry.abi
                 },
                 ExpenseTracker: {
                     address: expenseTracker.options.address,
-                    transactionHash: expenseTracker.transactionHash
+                    transactionHash: expenseTracker.transactionHash,
+                    abi: compiledContracts.ExpenseTracker.abi
                 }
             }
         };
         
         // Save to file
-        const deploymentPath = path.join(BUILD_DIR, 'deployment.json');
+        const deploymentPath = path.join(__dirname, '..', 'config', 'deployed-contracts.json');
         fs.writeFileSync(deploymentPath, JSON.stringify(deploymentInfo, null, 2));
         
         console.log('\n🎉 Deployment completed successfully!');
         console.log('\n📋 Contract Addresses:');
         console.log(`UserRegistry: ${userRegistry.options.address}`);
-        console.log(`VendorRegistry: ${vendorRegistry.options.address}`);
+        console.log(`CompanyRegistry: ${companyRegistry.options.address}`);
+        console.log(`TripRegistry: ${tripRegistry.options.address}`);
         console.log(`ExpenseTracker: ${expenseTracker.options.address}`);
         console.log(`\n💾 Deployment info saved to: ${deploymentPath}`);
         
@@ -138,7 +156,8 @@ async function compileContracts() {
     // List of contract files to compile
     const contractFiles = [
         'UserRegistry.sol',
-        'VendorRegistry.sol', 
+        'CompanyRegistry.sol',
+        'TripRegistry.sol',
         'ExpenseTracker.sol'
     ];
     
