@@ -1,0 +1,190 @@
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Server, Cpu, HardDrive, Clock, AlertCircle, CheckCircle2, Clock3, Network, Hash, Users } from 'lucide-react';
+
+type NodeStatus = 'online' | 'offline' | 'degraded' | 'maintenance';
+
+interface NodeCardProps {
+  id: string;
+  name: string;
+  url: string;
+  status: NodeStatus;
+  lastSeen: string;
+  cpuUsage: number;
+  memoryUsage: number;
+  diskUsage: number;
+  blockNumber?: number;
+  networkId?: number;
+  peerCount?: number;
+  services: Array<{
+    name: string;
+    status: 'online' | 'offline' | 'degraded';
+  }>;
+  className?: string;
+}
+
+const statusIcons = {
+  online: CheckCircle2,
+  offline: AlertCircle,
+  degraded: AlertCircle,
+  maintenance: Clock3,
+};
+
+const statusColors = {
+  online: 'bg-emerald-500',
+  offline: 'bg-destructive',
+  degraded: 'bg-amber-500',
+  maintenance: 'bg-blue-500',
+};
+
+export function NodeCard({
+  id,
+  name,
+  url,
+  status,
+  lastSeen,
+  cpuUsage,
+  memoryUsage,
+  diskUsage,
+  services,
+  className,
+}: NodeCardProps) {
+  const StatusIcon = statusIcons[status];
+  const isOnline = status === 'online';
+  
+  return (
+    <div className={cn('overflow-hidden rounded-lg border bg-card shadow-sm', className)}>
+      <div className="p-6">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Server className="h-6 w-6" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-lg font-medium">{name}</h3>
+                <Badge 
+          </Button>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {(blockNumber !== undefined || networkId !== undefined || peerCount !== undefined) && (
+          <div className="grid grid-cols-3 gap-4">
+            {blockNumber !== undefined && (
+              <div className="space-y-1">
+                <div className="flex items-center text-sm text-muted-foreground">
+                  <Hash className="mr-1 h-3.5 w-3.5" />
+                  Block
+                </div>
+                <div className="text-sm font-mono">{blockNumber.toLocaleString()}</div>
+              </div>
+            )}
+            {networkId !== undefined && (
+              <div className="space-y-1">
+                <div className="flex items-center text-sm text-muted-foreground">
+                  <Network className="mr-1 h-3.5 w-3.5" />
+                  Network ID
+          <div className="rounded-lg border p-4">
+            <div className="flex items-center">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                >
+                  <path d="M16 3v6" />
+                  <path d="M8 3v6" />
+                  <path d="M3 10h18" />
+                  <path d="M18 14.7c.4.4.4 1.2.4 1.8 0 .6 0 1.2-.4 1.6-.4.4-1 .4-1.6.4H7c-.6 0-1.2 0-1.6-.4-.4-.4-.4-1-.4-1.6 0-.6 0-1.4.4-1.8" />
+                  <path d="M12 3v12" />
+                  <path d="M7 18h10" />
+                </svg>
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-muted-foreground">Memory</p>
+                <div className="mt-1 flex items-baseline">
+                  <p className="text-lg font-semibold">{memoryUsage}%</p>
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div 
+                className={cn(
+                  'h-full',
+                  memoryUsage > 80 ? 'bg-destructive' :
+                  memoryUsage > 60 ? 'bg-amber-500' : 'bg-purple-500'
+                )}
+                style={{ width: `${memoryUsage}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-lg border p-4">
+            <div className="flex items-center">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+                <HardDrive className="h-5 w-5" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-muted-foreground">Disk</p>
+                <div className="mt-1 flex items-baseline">
+                  <p className="text-lg font-semibold">{diskUsage}%</p>
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div 
+                className={cn(
+                  'h-full',
+                  diskUsage > 80 ? 'bg-destructive' :
+                  diskUsage > 60 ? 'bg-amber-500' : 'bg-amber-400'
+                )}
+                style={{ width: `${diskUsage}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-medium text-muted-foreground">Services</h4>
+            <p className="text-xs text-muted-foreground">
+              Last seen: <span className="font-medium">{lastSeen}</span>
+            </p>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {services.map((service) => (
+              <Badge
+                key={`${id}-${service.name}`}
+                variant="outline"
+                className={cn(
+                  'inline-flex items-center gap-1',
+                  service.status === 'online' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                  service.status === 'degraded' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' :
+                  'bg-destructive/10 text-destructive dark:bg-destructive/20 dark:text-destructive-foreground'
+                )}
+              >
+                <div
+                  className={cn(
+                    'h-2 w-2 rounded-full',
+                    service.status === 'online' ? 'bg-emerald-500' :
+                    service.status === 'degraded' ? 'bg-amber-500' : 'bg-destructive'
+                  )}
+                />
+                {service.name}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

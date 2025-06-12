@@ -1,0 +1,9 @@
+{
+  "nodeId": "node-1",
+  "port": 3002,
+  "env": "development",
+  "isActive": true,
+  "lastSeen": "2025-06-11T13:28:10.787Z",
+  "publicUrl": "http://0a34f6cf1995a1bd52442f9425abbbad.serveo.net",
+  "handlerUrl": "https://good-polecat-enormously.ngrok-free.app"
+}

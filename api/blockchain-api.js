@@ -1,157 +1,640 @@
-const express = require('express');
-const { Web3 } = require('web3');
-const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
-const fs = require('fs');
+const http = require('http');
+const url = require('url');
+const sqlite3 = require('sqlite3').verbose();
+const jwt = require('jsonwebtoken');
 const path = require('path');
+const fs = require('fs');
+const Web3 = require('web3');
+const { v4: uuidv4 } = require('uuid');
+const formidable = require('formidable');
+require('dotenv').config(); // Load environment variables from .env file
 
-// Routes
-const expenseRoutes = require('./routes/expenses');
-const vendorRoutes = require('./routes/vendors');
-const userRoutes = require('./routes/users');
+const PORT = process.env.PORT || 3050;
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const DB_PATH = path.join(__dirname, 'data', 'app.db');
+const db = new sqlite3.Database(DB_PATH);
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Web3 setup
-const web3 = new Web3(process.env.BLOCKCHAIN_RPC_URL || 'http://localhost:8545');
-
-// Load deployed contracts
-let contracts = {};
-try {
-    const deployedContracts = JSON.parse(
-        fs.readFileSync(path.join(__dirname, '..', 'config', 'deployed-contracts.json'), 'utf8')
-    );
-    
-    // Check if contracts object exists and has expected structure
-    if (!deployedContracts || !deployedContracts.contracts) {
-        throw new Error("Invalid deployed-contracts.json structure");
-    }
-
-    const contractAddressesAndAbis = deployedContracts.contracts;
-
-    // Instantiate contracts using addresses and ABIs from the JSON
-    if (contractAddressesAndAbis.UserRegistry) {
-        contracts.userRegistry = new web3.eth.Contract(
-            contractAddressesAndAbis.UserRegistry.abi,
-            contractAddressesAndAbis.UserRegistry.address
-        );
-    }
-
-    if (contractAddressesAndAbis.CompanyRegistry) { // Changed from VendorRegistry
-        contracts.companyRegistry = new web3.eth.Contract(
-            contractAddressesAndAbis.CompanyRegistry.abi,
-            contractAddressesAndAbis.CompanyRegistry.address
-        );
-    }
-
-    if (contractAddressesAndAbis.ExpenseTracker) {
-        contracts.expenseTracker = new web3.eth.Contract(
-            contractAddressesAndAbis.ExpenseTracker.abi,
-            contractAddressesAndAbis.ExpenseTracker.address
-        );
-    }
-
-    if (contractAddressesAndAbis.TripRegistry) { // Added TripRegistry
-        contracts.tripRegistry = new web3.eth.Contract(
-            contractAddressesAndAbis.TripRegistry.abi,
-            contractAddressesAndAbis.TripRegistry.address
-        );
-    }
-
-    // Check if essential contracts are loaded (optional but good practice)
-    if (!contracts.userRegistry || !contracts.companyRegistry || !contracts.expenseTracker || !contracts.tripRegistry) {
-         console.warn("One or more essential contracts could not be loaded.");
-         // Depending on requirements, you might throw an error here instead
-    }
-
-    console.log('Smart contracts loaded successfully');
-} catch (error) {
-    console.error('Failed to load smart contracts:', error.message);
-    console.log('Make sure contracts are deployed first and deployed-contracts.json is correct.');
+// Load contract deployment info
+const DEPLOYED_CONTRACTS_PATH = path.join(__dirname, '../config/deployed-contracts.json');
+console.log(`DEBUG: Attempting to load deployed contracts from: ${DEPLOYED_CONTRACTS_PATH}`);
+let contractsInfo = null;
+if (fs.existsSync(DEPLOYED_CONTRACTS_PATH)) {
+  console.log(`DEBUG: deployed-contracts.json found at: ${DEPLOYED_CONTRACTS_PATH}`);
+  try {
+    const fileContent = fs.readFileSync(DEPLOYED_CONTRACTS_PATH, 'utf8');
+    console.log(`DEBUG: Raw content of deployed-contracts.json (first 100 chars): ${fileContent.substring(0, 100)}...`);
+    contractsInfo = JSON.parse(fileContent);
+    console.log('DEBUG: JSON.parse successful.');
+  } catch (parseError) {
+    console.error(`ERROR: Failed to parse deployed-contracts.json: ${parseError.message}`);
+  }
+} else {
+  console.error(`ERROR: deployed-contracts.json NOT FOUND at: ${DEPLOYED_CONTRACTS_PATH}`);
 }
 
-// Middleware
-app.use(helmet());
-app.use(cors());
-app.use(morgan('combined'));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+// Initialize Web3 and contract instances
+console.log('DEBUG: BLOCKCHAIN_RPC_URL from .env', process.env.BLOCKCHAIN_RPC_URL);
+let web3 = null;
+let UserRegistry = null, CompanyRegistry = null, TripRegistry = null, ExpenseTracker = null;
+if (contractsInfo && contractsInfo.contracts) {
+  web3 = new Web3(process.env.BLOCKCHAIN_RPC_URL || 'http://localhost:8545');
+  console.log('DEBUG: contractsInfo loaded', !!contractsInfo);
+  console.log('DEBUG: contractsInfo.contracts loaded', !!contractsInfo.contracts);
+  const { UserRegistry: ur, CompanyRegistry: cr, TripRegistry: tr, ExpenseTracker: et } = contractsInfo.contracts;
+  if (ur) UserRegistry = new web3.eth.Contract(ur.abi, ur.address);
+  if (cr) CompanyRegistry = new web3.eth.Contract(cr.abi, cr.address);
+  if (tr) TripRegistry = new web3.eth.Contract(tr.abi, tr.address);
+  if (et) ExpenseTracker = new web3.eth.Contract(et.abi, et.address);
+    } else {
+  console.error('ERROR: contractsInfo or contractsInfo.contracts is null/undefined. Web3 and contract instances will not be initialized.');
+}
 
-// Make web3 and contracts available to routes
-app.use((req, res, next) => {
-    req.web3 = web3;
-    req.contracts = contracts;
-    next();
-});
-
-// Health check
-app.get('/health', async (req, res) => {
-    try {
-        const blockNumber = await web3.eth.getBlockNumber();
-        const accounts = await web3.eth.getAccounts();
-        
-        res.json({
-            status: 'healthy',
-            blockchain: {
-                connected: true,
-                blockNumber: Number(blockNumber),
-                accounts: accounts.length
-            },
-            contracts: {
-                loaded: Object.keys(contracts).length > 0,
-                available: Object.keys(contracts)
-            }
-        });
-    } catch (error) {
-        res.status(500).json({
-            status: 'unhealthy',
-            error: error.message
-        });
+// Ensure users table exists
+const USERS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT UNIQUE,
+  password TEXT,
+  role TEXT
+);`;
+db.run(USERS_TABLE_SQL, () => {
+  // Insert default admin if not exists
+  db.get('SELECT * FROM users WHERE email = ?', ['admin@blockchain.com'], (err, user) => {
+    if (!user) {
+      db.run('INSERT INTO users (email, password, role) VALUES (?, ?, ?)', ['admin@blockchain.com', 'admin123', 'admin']);
     }
+  });
 });
 
-// Network info
-app.get('/network', async (req, res) => {
-    try {
-        const networkId = await web3.eth.net.getId();
-        const blockNumber = await web3.eth.getBlockNumber();
-        const gasPrice = await web3.eth.getGasPrice();
-        
-        res.json({
-            networkId: Number(networkId),
-            blockNumber: Number(blockNumber),
-            gasPrice: gasPrice.toString(),
-            nodeInfo: await web3.eth.getNodeInfo()
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+// Ensure files table exists
+const FILES_TABLE_SQL = `CREATE TABLE IF NOT EXISTS files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cid TEXT UNIQUE,
+  name TEXT,
+  size INTEGER,
+  mimetype TEXT,
+  uploaded_by INTEGER,
+  metadata TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);`;
+db.run(FILES_TABLE_SQL);
+
+// Ensure additional tables exist (adapted for SQLite)
+const DASHBOARD_TABLE_SQL = `CREATE TABLE IF NOT EXISTS dashboard (
+  supaId INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  vendorName TEXT NOT NULL,
+  submittedBy TEXT NOT NULL,
+  projectName TEXT NOT NULL,
+  receiptPreview TEXT NOT NULL,
+  expenseType TEXT,
+  submissionDate TEXT NOT NULL,
+  amount TEXT NOT NULL,
+  status TEXT NOT NULL,
+  onChainHash TEXT NOT NULL,
+  actions TEXT NOT NULL,
+  id INTEGER NOT NULL
+);`;
+db.run(DASHBOARD_TABLE_SQL);
+
+const EXPENSES_TABLE_SQL = `CREATE TABLE IF NOT EXISTS expenses (
+  id TEXT PRIMARY KEY,
+  amount REAL,
+  currency TEXT,
+  transaction_date TEXT,
+  vendor_name TEXT,
+  category TEXT,
+  description TEXT,
+  document_id TEXT,
+  payment_method TEXT,
+  tax_amount REAL,
+  document_url TEXT,
+  extracted_data TEXT,
+  summary TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  user_id TEXT NOT NULL,
+  trip_id TEXT NOT NULL,
+  blockchain_status INTEGER NOT NULL DEFAULT 0,
+  blockchain_id TEXT
+);`;
+db.run(EXPENSES_TABLE_SQL);
+
+const PROFILES_TABLE_SQL = `CREATE TABLE IF NOT EXISTS profiles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT UNIQUE,
+  wallet_id TEXT,
+  email TEXT,
+  role TEXT DEFAULT 'user'
+);`;
+db.run(PROFILES_TABLE_SQL);
+
+const RECEIPT_FRAUD_CHECKS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS receipt_fraud_checks (
+  id TEXT PRIMARY KEY,
+  expense_id TEXT UNIQUE,
+  overall_risk_score REAL CHECK (overall_risk_score >= 0 AND overall_risk_score <= 1),
+  fraud_probability REAL CHECK (fraud_probability >= 0 AND fraud_probability <= 1),
+  risk_factors TEXT,
+  verification_results TEXT,
+  image_analysis_results TEXT,
+  online_verification_results TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);`;
+db.run(RECEIPT_FRAUD_CHECKS_TABLE_SQL);
+
+const TRIPS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS trips (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  budget REAL NOT NULL,
+  budget_spent REAL DEFAULT 0.00,
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  status TEXT DEFAULT 'active',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);`;
+db.run(TRIPS_TABLE_SQL);
+
+const VECTOR_DB_DOCUMENTS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS vector_db_documents (
+  id TEXT PRIMARY KEY,
+  vector_db_name TEXT,
+  document_id TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);`;
+db.run(VECTOR_DB_DOCUMENTS_TABLE_SQL);
+
+// Ensure file storage buckets exist
+const uploadsDir = path.join(__dirname, 'uploads');
+['data-storage', 'images', 'web-frontend'].forEach(bucket => {
+  const bucketPath = path.join(uploadsDir, bucket);
+  if (!fs.existsSync(bucketPath)) {
+    fs.mkdirSync(bucketPath, { recursive: true });
+  }
 });
 
-// Routes
-app.use('/api/expenses', expenseRoutes);
-app.use('/api/vendors', vendorRoutes);
-app.use('/api/users', userRoutes);
+function getOrigin(req) {
+  // Allow only the dashboard origin
+  const allowedOrigin = 'http://localhost:3001';
+  const origin = req.headers.origin;
+  if (origin === allowedOrigin) return allowedOrigin;
+  return '';
+}
 
-// Error handling
-app.use((error, req, res, next) => {
-    console.error('API Error:', error);
-    res.status(500).json({
-        error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
+function send(res, status, data, req) {
+  const origin = getOrigin(req);
+  res.writeHead(status, {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Credentials': 'true',
+  });
+  res.end(JSON.stringify(data));
+}
+
+function handleOptions(res, req) {
+  const origin = getOrigin(req);
+  res.writeHead(204, {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Credentials': 'true',
+  });
+  res.end();
+}
+
+function parseBody(req) {
+  return new Promise(resolve => {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try { resolve(JSON.parse(body)); } catch { resolve({}); }
     });
+  });
+}
+
+function verifyToken(req) {
+  const auth = req.headers['authorization'];
+  console.log('Verify Token: Authorization Header', auth);
+  if (!auth || !auth.startsWith('Bearer ')) {
+    console.log('Verify Token: No valid Authorization header');
+    return null;
+  }
+  try {
+    const token = auth.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+    console.log('Verify Token: Decoded payload', decoded);
+    return decoded;
+  } catch (e) {
+    console.error('Verify Token: Error verifying token', e);
+    return null;
+  }
+}
+
+const server = http.createServer(async (req, res) => {
+  const parsed = url.parse(req.url, true);
+  const method = req.method.trim().toUpperCase();
+  const requestPath = parsed.pathname.trim();
+
+  console.log(`Incoming Request: ${method} ${requestPath}`);
+
+  if (method === 'OPTIONS') return handleOptions(res, req);
+
+  // Health check
+  if (requestPath === '/health' && method === 'GET') {
+    return send(res, 200, { status: 'ok' }, req);
+  }
+
+  // Auth register (create admin if none exists)
+  if (requestPath === '/auth/register' && method === 'POST') {
+    const body = await parseBody(req);
+    if (!body.email || !body.password || !body.role) return send(res, 400, { error: 'Missing fields' }, req);
+    try {
+      await new Promise((resolve, reject) => {
+        db.run('INSERT INTO users (email, password, role) VALUES (?, ?, ?)', [body.email, body.password, body.role], function(err) {
+          if (err) return reject(err);
+          resolve();
+        });
+      });
+      return send(res, 201, { success: true }, req);
+    } catch (e) {
+      return send(res, 400, { error: 'User already exists' }, req);
+    }
+  }
+
+  // Auth login
+  if (requestPath === '/auth/login' && method === 'POST') {
+    const body = await parseBody(req);
+    db.get('SELECT * FROM users WHERE email = ?', [body.email], (err, user) => {
+      if (err || !user) return send(res, 401, { error: 'Invalid credentials' }, req);
+      if (user.password !== body.password) return send(res, 401, { error: 'Invalid credentials' }, req);
+      const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '8h' });
+      return send(res, 200, { token, user: { id: user.id, email: user.email, role: user.role } }, req);
+    });
+    return;
+  }
+
+  // Blockchain Info
+  if (requestPath === '/api/blockchain/info' && method === 'GET') {
+    if (!web3 || !UserRegistry || !CompanyRegistry || !TripRegistry || !ExpenseTracker) {
+      console.error('Blockchain API: Web3 or one of the contract instances is not initialized.');
+      return send(res, 500, { error: 'Web3 or contract instances not initialized. Check server logs for details.' }, req);
+    }
+    try {
+      const networkId = await web3.eth.net.getId();
+      const blockNumber = await web3.eth.getBlockNumber();
+      const accounts = await web3.eth.getAccounts();
+
+      const blockchainInfo = {
+        nodeInfo: await web3.eth.getNodeInfo(),
+        networkId: networkId,
+        isListening: await web3.eth.net.isListening(),
+        peerCount: await web3.eth.net.getPeerCount(),
+        blockNumber: blockNumber,
+        gasPrice: await web3.eth.getGasPrice(),
+        accounts: accounts,
+        coinbase: await web3.eth.getCoinbase(),
+        // Example: Get user count from contract if UserRegistry is initialized
+        userCount: UserRegistry ? (await UserRegistry.methods.getAllUsers().call()).length : 0,
+        contractAddresses: {
+          userRegistry: UserRegistry ? UserRegistry.options.address : null,
+          companyRegistry: CompanyRegistry ? CompanyRegistry.options.address : null,
+          tripRegistry: TripRegistry ? TripRegistry.options.address : null,
+          expenseTracker: ExpenseTracker ? ExpenseTracker.options.address : null,
+        },
+      };
+      // Convert BigInt values to string for JSON serialization
+      for (const key in blockchainInfo) {
+        if (typeof blockchainInfo[key] === 'bigint') {
+          blockchainInfo[key] = blockchainInfo[key].toString();
+        }
+      }
+      if (blockchainInfo.gasPrice && typeof blockchainInfo.gasPrice === 'bigint') {
+        blockchainInfo.gasPrice = blockchainInfo.gasPrice.toString();
+      }
+
+      return send(res, 200, blockchainInfo, req);
+    } catch (error) {
+      console.error('Blockchain API Error:', error);
+      return send(res, 500, { error: 'Failed to fetch blockchain info', details: error.message }, req);
+    }
+  }
+
+  // Protect all /api routes
+  if (requestPath.startsWith('/api/') && !verifyToken(req)) {
+    return send(res, 403, { error: 'Forbidden' }, req);
+  }
+
+  // Helper to check if user is admin
+  function isAdmin(req) {
+    const tokenPayload = verifyToken(req);
+    console.log('Is Admin Check: Token Payload', tokenPayload);
+    console.log('Is Admin Check: User Role', tokenPayload ? tokenPayload.role : 'No Payload');
+    return tokenPayload && tokenPayload.role === 'admin';
+  }
+
+  // Generic CRUD for all tables (admin only)
+  async function handleCrud(routePrefix, table, req, res) {
+    console.log(`handleCrud called for: routePrefix=${routePrefix}, table=${table}`);
+    if (!isAdmin(req)) return send(res, 403, { error: 'Forbidden' }, req);
+
+    const parsedPath = url.parse(req.url).pathname;
+    const parts = parsedPath.split('/').filter(p => p);
+
+    let id = null;
+    const routePrefixIndex = parts.indexOf(routePrefix);
+    if (routePrefixIndex > -1 && parts.length > routePrefixIndex + 1) {
+        id = parts[routePrefixIndex + 1];
+    }
+    console.log(`handleCrud ID parsed: ${id}`);
+
+    switch (req.method) {
+      case 'GET':
+        if (id) {
+          db.get(`SELECT * FROM ${table} WHERE id = ?`, [id], (err, row) => {
+            if (err || !row) return send(res, 404, { error: `${table} not found` }, req);
+            return send(res, 200, row, req);
+          });
+        } else {
+          db.all(`SELECT * FROM ${table}`, [], (err, rows) => {
+            if (err) return send(res, 500, { error: 'Database error' }, req);
+            return send(res, 200, { [table]: rows }, req);
+          });
+        }
+        break;
+      case 'POST':
+        const body = await parseBody(req);
+        if (!body || Object.keys(body).length === 0) return send(res, 400, { error: 'Missing body for POST' }, req);
+        const columns = Object.keys(body).join(', ');
+        const placeholders = Object.keys(body).map(() => '?').join(', ');
+        const values = Object.values(body);
+        db.run(`INSERT INTO ${table} (${columns}) VALUES (${placeholders})`, values, function(err) {
+          if (err) return send(res, 400, { error: `Insert failed: ${err.message}` }, req);
+          return send(res, 201, { id: this.lastID, success: true }, req);
+        });
+        break;
+      case 'PUT':
+        if (!id) return send(res, 400, { error: 'Missing ID for PUT' }, req);
+        const putBody = await parseBody(req);
+        if (!putBody || Object.keys(putBody).length === 0) return send(res, 400, { error: 'Missing body for PUT' }, req);
+        const setClause = Object.keys(putBody).map(k => `${k} = ?`).join(', ');
+        const putValues = [...Object.values(putBody), id];
+        db.run(`UPDATE ${table} SET ${setClause} WHERE id = ?`, putValues, function(err) {
+          if (err) return send(res, 400, { error: `Update failed: ${err.message}` }, req);
+          return send(res, 200, { success: true }, req);
+        });
+        break;
+      case 'DELETE':
+        if (!id) return send(res, 400, { error: 'Missing ID for DELETE' }, req);
+        db.run(`DELETE FROM ${table} WHERE id = ?`, [id], function(err) {
+          if (err) return send(res, 400, { error: `Delete failed: ${err.message}` }, req);
+          return send(res, 200, { success: true }, req);
+        });
+        break;
+      default:
+        send(res, 405, { error: 'Method not allowed' }, req);
+    }
+  }
+
+  // --- FILE STORAGE BUCKET ENDPOINTS (admin only) ---
+  // GET /api/files/buckets
+  if (requestPath === '/api/files/buckets' && method === 'GET') {
+    if (!isAdmin(req)) return send(res, 403, { error: 'Forbidden' }, req);
+    const uploadsDir = path.join(__dirname, 'uploads');
+    fs.readdir(uploadsDir, { withFileTypes: true }, (err, dirents) => {
+      if (err) return send(res, 500, { error: 'Failed to read uploads directory' }, req);
+      const buckets = dirents.filter(dirent => dirent.isDirectory()).map(dirent => dirent.name);
+      return send(res, 200, { buckets }, req);
+    });
+    return;
+  }
+
+  // --- RESTful FILES ENDPOINTS (admin only) ---
+  // GET /api/files
+  if (requestPath === '/api/files' && method === 'GET') {
+    if (!isAdmin(req)) return send(res, 403, { error: 'Forbidden' }, req);
+    db.all('SELECT * FROM files', [], (err, rows) => {
+      if (err) return send(res, 500, { error: 'Database error' }, req);
+      return send(res, 200, { files: rows }, req);
+    });
+    return;
+  }
+  // POST /api/files (multipart upload)
+  if (requestPath === '/api/files' && method === 'POST') {
+    if (!isAdmin(req)) return send(res, 403, { error: 'Forbidden' }, req);
+    const form = formidable({ multiples: false, uploadDir: path.join(__dirname, 'uploads'), keepExtensions: true });
+    form.parse(req, (err, fields, filesObj) => {
+      if (err) return send(res, 400, { error: 'File upload failed', details: err.message }, req);
+      const file = filesObj.file;
+      if (!file) return send(res, 400, { error: 'No file uploaded' }, req);
+      // Move file to correct bucket if specified
+      const bucket = fields.bucket || 'data-storage';
+      const bucketPath = path.join(__dirname, 'uploads', bucket);
+      if (!fs.existsSync(bucketPath)) fs.mkdirSync(bucketPath, { recursive: true });
+      const destPath = path.join(bucketPath, file.originalFilename);
+      fs.renameSync(file.filepath, destPath);
+      db.run('INSERT INTO files (name, size, mimetype, uploaded_by, metadata) VALUES (?, ?, ?, ?, ?)', [file.originalFilename, file.size, file.mimetype, 1, JSON.stringify({ bucket })]);
+      return send(res, 201, { success: true, filename: file.originalFilename }, req);
+    });
+    return;
+  }
+
+  // GET /api/files/:id (download)
+  const fileIdMatch = requestPath.match(/^\/api\/files\/(\d+)$/);
+  if (fileIdMatch && method === 'GET') {
+    if (!isAdmin(req)) return send(res, 403, { error: 'Forbidden' }, req);
+    const fileId = fileIdMatch[1];
+    db.get('SELECT * FROM files WHERE id = ?', [fileId], (err, file) => {
+      if (err || !file) return send(res, 404, { error: 'File not found' }, req);
+      const bucket = (JSON.parse(file.metadata || '{}').bucket) || 'data-storage';
+      const filePath = path.join(__dirname, 'uploads', bucket, file.name);
+      if (!fs.existsSync(filePath)) return send(res, 404, { error: 'File not found on disk' }, req);
+      res.writeHead(200, {
+        'Content-Type': file.mimetype,
+        'Content-Disposition': `attachment; filename="${file.name}"`,
+        'Access-Control-Allow-Origin': getOrigin(req),
+        'Access-Control-Allow-Credentials': 'true',
+      });
+      fs.createReadStream(filePath).pipe(res);
+    });
+    return;
+  }
+
+  // DELETE /api/files/:id
+  if (fileIdMatch && method === 'DELETE') {
+    if (!isAdmin(req)) return send(res, 403, { error: 'Forbidden' }, req);
+    const fileId = fileIdMatch[1];
+    db.get('SELECT * FROM files WHERE id = ?', [fileId], (err, file) => {
+      if (err || !file) return send(res, 404, { error: 'File not found' }, req);
+      const bucket = (JSON.parse(file.metadata || '{}').bucket) || 'data-storage';
+      const filePath = path.join(__dirname, 'uploads', bucket, file.name);
+      // Delete file from disk
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+      // Delete file entry from database
+      db.run('DELETE FROM files WHERE id = ?', [fileId], function(dbErr) {
+        if (dbErr) return send(res, 500, { error: 'Failed to delete file from DB', details: dbErr.message }, req);
+        return send(res, 200, { success: true, message: 'File deleted successfully' }, req);
+      });
+    });
+    return;
+  }
+
+  // --- FILE UPLOAD ENDPOINT (admin only) ---
+  if (requestPath === '/api/files/upload' && method === 'POST') {
+    if (!isAdmin(req)) return send(res, 403, { error: 'Forbidden' }, req);
+    // For demo: expects JSON body with { filename, content (base64), mimetype, bucket }
+    const body = await parseBody(req);
+    const { filename, content, mimetype, bucket } = body;
+    if (!filename || !content || !bucket) return send(res, 400, { error: 'Missing fields' }, req);
+    const allowedBuckets = ['data-storage', 'images', 'web-frontend'];
+    const bucketPath = path.join(__dirname, 'uploads', bucket);
+    if (!allowedBuckets.includes(bucket) || !fs.existsSync(bucketPath)) return send(res, 400, { error: 'Invalid bucket' }, req);
+    const filePath = path.join(bucketPath, filename);
+    fs.writeFileSync(filePath, Buffer.from(content, 'base64'));
+    db.run('INSERT INTO files (name, size, mimetype, uploaded_by, metadata) VALUES (?, ?, ?, ?, ?)', [filename, Buffer.from(content, 'base64').length, mimetype, 1, JSON.stringify({ bucket })]);
+    return send(res, 201, { success: true, filename }, req);
+  }
+
+  // --- CREATE NEW TABLE (admin only) ---
+  if (requestPath === '/api/admin/create-table' && method === 'POST') {
+    if (!isAdmin(req)) return send(res, 403, { error: 'Forbidden' }, req);
+    const body = await parseBody(req);
+    if (!body.sql) return send(res, 400, { error: 'Missing sql' }, req);
+    db.run(body.sql, [], function(err) {
+      if (err) return send(res, 400, { error: 'Table creation failed', details: err.message }, req);
+      return send(res, 201, { success: true }, req);
+    });
+    return;
+  }
+
+  // --- CREATE NEW BUCKET (admin only) ---
+  if (requestPath === '/api/admin/create-bucket' && method === 'POST') {
+    if (!isAdmin(req)) return send(res, 403, { error: 'Forbidden' }, req);
+    const body = await parseBody(req);
+    if (!body.bucket) return send(res, 400, { error: 'Missing bucket' }, req);
+    const bucketPath = path.join(__dirname, 'uploads', body.bucket);
+    if (!fs.existsSync(bucketPath)) {
+      fs.mkdirSync(bucketPath, { recursive: true });
+      return send(res, 201, { success: true, bucket: body.bucket }, req);
+    } else {
+      return send(res, 400, { error: 'Bucket already exists' }, req);
+    }
+  }
+
+  // --- RESTful USERS ENDPOINTS (admin only) ---
+  if (requestPath.startsWith('/api/users')) return handleCrud('users', 'users', req, res);
+
+  // --- RESTful VENDORS ENDPOINTS (admin only) ---
+  if (requestPath.startsWith('/api/vendors')) return handleCrud('vendors', 'profiles', req, res); // Vendors are profiles with role 'vendor'
+
+  // --- RESTful EXPENSES ENDPOINTS (admin only) ---
+  if (requestPath.startsWith('/api/expenses')) return handleCrud('expenses', 'expenses', req, res);
+
+  // --- RESTful DASHBOARD ENDPOINTS (admin only) ---
+  if (requestPath.startsWith('/api/dashboard')) return handleCrud('dashboard', 'dashboard', req, res);
+
+  // --- RESTful TRIPS ENDPOINTS (admin only) ---
+  if (requestPath.startsWith('/api/trips')) return handleCrud('trips', 'trips', req, res);
+
+  // --- RESTful RECEIPT_FRAUD_CHECKS ENDPOINTS (admin only) ---
+  if (requestPath.startsWith('/api/receipt_fraud_checks')) return handleCrud('receipt_fraud_checks', 'receipt_fraud_checks', req, res);
+
+  // --- RESTful VECTOR_DB_DOCUMENTS ENDPOINTS (admin only) ---
+  if (requestPath.startsWith('/api/vector_db_documents')) return handleCrud('vector_db_documents', 'vector_db_documents', req, res);
+
+
+  // --- DB Inspection Endpoints (admin only) ---
+  // GET /api/db/tables
+  if (requestPath === '/api/db/tables' && method === 'GET') {
+    if (!isAdmin(req)) return send(res, 403, { error: 'Forbidden' }, req);
+    db.all('SELECT name FROM sqlite_master WHERE type="table" ORDER BY name', [], (err, rows) => {
+      if (err) return send(res, 500, { error: 'Database error' }, req);
+      return send(res, 200, { tables: rows.map(row => row.name) }, req);
+    });
+    return;
+  }
+
+  // GET /api/db/relationships (Must be before /api/db/:tableName)
+  if (requestPath === '/api/db/relationships' && method === 'GET') {
+    console.log(`Debug: Entering /api/db/relationships handler. Path: '${requestPath}', Method: '${method}'`);
+    console.log('Processing /api/db/relationships request.');
+    if (!isAdmin(req)) {
+      console.log('Access denied for /api/db/relationships: not admin.');
+      return send(res, 403, { error: 'Forbidden' }, req);
+    }
+    db.all('SELECT name FROM sqlite_master WHERE type="table" ORDER BY name', [], async (err, tables) => {
+      if (err) {
+        console.error('Error fetching tables for relationships:', err);
+        return send(res, 500, { error: 'Database error fetching tables', details: err.message }, req);
+      }
+      console.log('Tables fetched for relationships:', tables.map(t => t.name));
+
+      const relationships = {};
+      for (const table of tables) {
+        try {
+          await new Promise((resolve, reject) => {
+            db.all(`PRAGMA foreign_key_list('${table.name}')`, [], (fkErr, fks) => {
+              if (fkErr) {
+                console.error(`Error fetching foreign keys for table ${table.name}:`, fkErr);
+                return reject(fkErr);
+              }
+              if (fks.length > 0) {
+                relationships[table.name] = fks;
+                console.log(`Found foreign keys for ${table.name}:`, fks);
+              }
+              resolve(null);
+            });
+          });
+        } catch (e) {
+          console.error(`Error processing foreign keys for table ${table.name}:`, e);
+          // Continue processing other tables even if one fails
+        }
+      }
+      console.log('Successfully fetched relationships. Sending response.');
+      return send(res, 200, { relationships }, req);
+    });
+    return;
+  }
+
+  // GET /api/db/relationships (Must be before /api/db/:tableName)
+  const tableSchemaMatch = requestPath.match(/^\/api\/db\/([a-zA-Z0-9_]+)\/schema$/);
+  if (tableSchemaMatch && method === 'GET') {
+    if (!isAdmin(req)) return send(res, 403, { error: 'Forbidden' }, req);
+    const tableName = tableSchemaMatch[1];
+    db.all(`PRAGMA table_info('${tableName}')`, [], (err, rows) => {
+      if (err) return send(res, 500, { error: 'Database error fetching schema', details: err.message }, req);
+      return send(res, 200, { tableName, schema: rows }, req);
+    });
+    return;
+  }
+
+  // GET /api/db/:tableName
+  const tableMatch = requestPath.match(/^\/api\/db\/([a-zA-Z0-9_]+)$/);
+  if (tableMatch && method === 'GET') {
+    if (!isAdmin(req)) return send(res, 403, { error: 'Forbidden' }, req);
+    const tableName = tableMatch[1];
+    // Basic validation to prevent SQL injection for table name (though parameterized queries protect values)
+    db.get('SELECT name FROM sqlite_master WHERE type=? AND name = ?', ['table', tableName], (err, row) => {
+      if (err || !row) return send(res, 404, { error: 'Table not found' }, req);
+
+      db.all(`SELECT * FROM ${tableName}`, [], (err, rows) => {
+        if (err) return send(res, 500, { error: 'Database error fetching table data', details: err.message }, req);
+        return send(res, 200, { tableName, data: rows }, req);
+      });
+    });
+    return;
+  }
+
+  // No route matched
+  console.log(`No route matched for: ${method} ${requestPath}. Sending 404.`);
+  send(res, 404, { error: 'Not found' }, req);
 });
 
-// 404 handler
-app.use((req, res) => {
-    res.status(404).json({ error: 'Endpoint not found' });
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
-
-app.listen(PORT, () => {
-    console.log(`Expense Tracker Blockchain API running on port ${PORT}`);
-    console.log(`Health check: http://localhost:${PORT}/health`);
-});
-
-module.exports = app;

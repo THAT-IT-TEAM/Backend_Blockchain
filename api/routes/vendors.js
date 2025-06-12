@@ -1,133 +1,103 @@
 const express = require('express');
 const router = express.Router();
 
-// Register new vendor
-router.post('/register', async (req, res) => {
-    try {
-        const { contracts } = req;
-        const { adminAddress, vendorAddress, name, category, contactInfo } = req.body;
+// Register new vendor (MOVED functionality to auth.js and sync process)
+// router.post('/register', async (req, res) => {
+//     try {
+//         const { contracts } = req;
+//         const { adminAddress, vendorAddress, name, category, contactInfo } = req.body;
         
-        if (!adminAddress || !vendorAddress || !name || !category) {
-            return res.status(400).json({ error: 'Missing required fields' });
-        }
+//         if (!adminAddress || !vendorAddress || !name || !category) {
+//             return res.status(400).json({ error: 'Missing required fields' });
+//         }
         
-        const result = await contracts.vendorRegistry.methods
-            .registerVendor(vendorAddress, name, category, contactInfo || '')
-            .send({ from: adminAddress, gas: 300000 });
+//         const result = await contracts.vendorRegistry.methods
+//             .registerVendor(vendorAddress, name, category, contactInfo || '')
+//             .send({ from: adminAddress, gas: 300000 });
         
-        res.json({
-            success: true,
-            transactionHash: result.transactionHash
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
+//         res.json({
+//             success: true,
+//             transactionHash: result.transactionHash
+//         });
+//     } catch (error) {
+//         res.status(500).json({ error: error.message });
+//     }
+// });
 
-// Get all vendors
+// Get all vendors (now from local SQLite)
 router.get('/', async (req, res) => {
+    const { db } = req; // Access the SQLite database instance
     try {
-        const { contracts } = req;
-        
-        const vendorAddresses = await contracts.vendorRegistry.methods
-            .getAllVendors()
-            .call();
-        
-        const vendors = [];
-        for (const address of vendorAddresses) {
-            const vendor = await contracts.vendorRegistry.methods
-                .getVendor(address)
-                .call();
-            
-            vendors.push({
-                address: vendor.vendorAddress,
-                name: vendor.name,
-                category: vendor.category,
-                contactInfo: vendor.contactInfo,
-                isActive: vendor.isActive,
-                registrationTime: new Date(Number(vendor.registrationTime) * 1000),
-                totalTransactions: Number(vendor.totalTransactions),
-                totalAmount: vendor.totalAmount
+        const vendors = await new Promise((resolve, reject) => {
+            // Assuming vendors are stored in the 'users' table with role = 'vendor'
+            db.all(`SELECT id, email, wallet_id, role FROM users WHERE role = 'vendor'`, [], (err, rows) => {
+                if (err) return reject(err);
+                resolve(rows);
             });
-        }
-        
+        });
         res.json({ vendors });
     } catch (error) {
+        console.error('Error fetching vendors from local DB:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Get vendor by address
+// Get vendor by address (now from local SQLite using wallet_id)
 router.get('/:address', async (req, res) => {
+    const { db } = req; // Access the SQLite database instance
+    const vendorAddress = req.params.address; // This is the wallet_id
     try {
-        const { contracts } = req;
-        const vendorAddress = req.params.address;
+        const vendor = await new Promise((resolve, reject) => {
+            // Assuming vendors are in the 'users' table with role = 'vendor'
+            db.get(`SELECT id, email, wallet_id, role FROM users WHERE wallet_id = ? AND role = 'vendor'`, [vendorAddress], (err, row) => {
+                if (err) return reject(err);
+                resolve(row);
+            });
+        });
         
-        const vendor = await contracts.vendorRegistry.methods
-            .getVendor(vendorAddress)
-            .call();
-        
-        if (!vendor.isActive && vendor.registrationTime === '0') {
-            return res.status(404).json({ error: 'Vendor not found' });
+        if (!vendor) {
+            return res.status(404).json({ error: 'Vendor not found in local database with this wallet ID' });
         }
         
         res.json({
-            address: vendor.vendorAddress,
-            name: vendor.name,
-            category: vendor.category,
-            contactInfo: vendor.contactInfo,
-            isActive: vendor.isActive,
-            registrationTime: new Date(Number(vendor.registrationTime) * 1000),
-            totalTransactions: Number(vendor.totalTransactions),
-            totalAmount: vendor.totalAmount
+            id: vendor.id,
+            email: vendor.email,
+            wallet_id: vendor.wallet_id,
+            role: vendor.role
+            // You might add name, category, contactInfo fields here if they are in your users table
         });
     } catch (error) {
+        console.error('Error fetching vendor by wallet ID from local DB:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Get vendors by category
+// Get vendors by category (now from local SQLite)
 router.get('/category/:category', async (req, res) => {
+    const { db } = req; // Access the SQLite database instance
+    const category = req.params.category;
     try {
-        const { contracts } = req;
-        const category = req.params.category;
-        
-        const vendorAddresses = await contracts.vendorRegistry.methods
-            .getVendorsByCategory(category)
-            .call();
-        
-        const vendors = [];
-        for (const address of vendorAddresses) {
-            const vendor = await contracts.vendorRegistry.methods
-                .getVendor(address)
-                .call();
-            
-            if (vendor.isActive) {
-                vendors.push({
-                    address: vendor.vendorAddress,
-                    name: vendor.name,
-                    category: vendor.category,
-                    contactInfo: vendor.contactInfo,
-                    isActive: vendor.isActive,
-                    registrationTime: new Date(Number(vendor.registrationTime) * 1000),
-                    totalTransactions: Number(vendor.totalTransactions),
-                    totalAmount: vendor.totalAmount
-                });
-            }
-        }
+        const vendors = await new Promise((resolve, reject) => {
+            // Assuming a 'category' column exists in the users table for vendors
+            db.all(`SELECT id, email, wallet_id, role FROM users WHERE role = 'vendor' AND category = ?`, [category], (err, rows) => {
+                if (err) return reject(err);
+                resolve(rows);
+            });
+        });
         
         res.json({ vendors });
     } catch (error) {
+        console.error('Error fetching vendors by category from local DB:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Deactivate vendor
+// Deactivate vendor (still interacts with blockchain)
 router.put('/:address/deactivate', async (req, res) => {
     try {
         const { contracts } = req;
         const { adminAddress } = req.body;
-        const vendorAddress = req.params.address;
+        const vendorAddress = req.params.address; // Assumed to be blockchain address
         
         if (!adminAddress) {
             return res.status(400).json({ error: 'Admin address required' });
@@ -146,12 +116,12 @@ router.put('/:address/deactivate', async (req, res) => {
     }
 });
 
-// Activate vendor
+// Activate vendor (still interacts with blockchain)
 router.put('/:address/activate', async (req, res) => {
     try {
         const { contracts } = req;
         const { adminAddress } = req.body;
-        const vendorAddress = req.params.address;
+        const vendorAddress = req.params.address; // Assumed to be blockchain address
         
         if (!adminAddress) {
             return res.status(400).json({ error: 'Admin address required' });

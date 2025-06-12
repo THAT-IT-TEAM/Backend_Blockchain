@@ -199,11 +199,22 @@ async function compileContracts() {
     // Custom import resolver function
     function findImports(importPath) {
         try {
-            const fullPath = path.join(CONTRACTS_DIR, importPath);
-            if (fs.existsSync(fullPath)) {
-                return {
-                    contents: fs.readFileSync(fullPath, 'utf8')
-                };
+            // Resolve from node_modules
+            const nodeModulesPath = path.resolve(__dirname, '..', 'node_modules', importPath);
+            if (fs.existsSync(nodeModulesPath)) {
+                return { contents: fs.readFileSync(nodeModulesPath, 'utf8') };
+            }
+
+            // Resolve from local contracts directory
+            const localPath = path.resolve(CONTRACTS_DIR, importPath);
+            if (fs.existsSync(localPath)) {
+                return { contents: fs.readFileSync(localPath, 'utf8') };
+            }
+
+            // For nested imports within libraries (e.g., @openzeppelin/contracts/utils/Context.sol)
+            const directPath = path.resolve(importPath);
+            if (fs.existsSync(directPath)) {
+                return { contents: fs.readFileSync(directPath, 'utf8') };
             }
             return { error: 'File not found' };
         } catch (error) {

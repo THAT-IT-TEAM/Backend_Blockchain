@@ -1,0 +1,21 @@
+{
+  "name": "node-handler",
+  "version": "1.0.0",
+  "description": "Main handler node for routing requests to microservices",
+  "main": "handler.js",
+  "scripts": {
+    "start": "node handler.js",
+    "dev": "nodemon handler.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "ngrok": "^5.0.0-beta.2",
+    "node-cache": "^5.1.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}

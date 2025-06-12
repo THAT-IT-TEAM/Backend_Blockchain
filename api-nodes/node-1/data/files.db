@@ -1,0 +1,2 @@
+{"$$indexCreated":{"fieldName":"cid","unique":true,"sparse":false}}
+{"$$indexCreated":{"fieldName":"uploadedBy","unique":false,"sparse":false}}

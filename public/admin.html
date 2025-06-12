@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Blockchain Expense Tracker</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 900px; margin: 20px auto; background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); }
+        h1, h2 { color: #0056b3; }
+        .auth-section { margin-bottom: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #e9f7ff; }
+        .auth-section h2 { margin-top: 0; }
+        input[type="email"], input[type="password"], input[type="text"], select {
+            width: calc(100% - 22px); padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px;
+        }
+        button {
+            background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;
+        }
+        button:hover { background-color: #0056b3; }
+        .dashboard-section { display: none; margin-top: 20px; }
+        .dashboard-section h3 { border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .error { color: red; margin-bottom: 10px; }
+        .success { color: green; margin-bottom: 10px; }
+        pre { background-color: #eee; padding: 10px; border-radius: 4px; overflow-x: auto; }
+        .sub-section { margin-bottom: 20px; padding: 15px; border: 1px solid #f0f0f0; border-radius: 5px; background-color: #fafafa; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Admin Panel</h1>
+
+        <div id="auth-section" class="auth-section">
+            <h2>Admin Login</h2>
+            <div id="auth-message" class="error"></div>
+            <form id="login-form">
+                <label for="email">Email:</label>
+                <input type="email" id="email" required><br>
+                <label for="password">Password:</label>
+                <input type="password" id="password" required><br>
+                <button type="submit">Login</button>
+            </form>
+        </div>
+
+        <div id="dashboard-section" class="dashboard-section">
+            <button id="logout-btn">Logout</button>
+            <h2 id="welcome-message">Welcome, Admin!</h2>
+
+            <div class="sub-section">
+                <h3>Users Management</h3>
+                <div id="users-list">Loading users...</div>
+                <h4>Register New User</h4>
+                <div id="register-user-message" class="error"></div>
+                <form id="register-user-form">
+                    <label for="new-user-email">Email:</label>
+                    <input type="email" id="new-user-email" required><br>
+                    <label for="new-user-password">Password:</label>
+                    <input type="password" id="new-user-password" required><br>
+                    <label for="new-user-role">Role:</label>
+                    <select id="new-user-role">
+                        <option value="user">User</option>
+                        <option value="vendor">Vendor</option>
+                        <option value="admin">Admin</option>
+                    </select><br>
+                    <button type="submit">Register User</button>
+                </form>
+            </div>
+
+            <div class="sub-section">
+                <h3>Blockchain Synchronization</h3>
+                <button id="sync-check-btn">Check Sync Status</button>
+                <div id="sync-check-output"></div>
+                <button id="run-sync-btn">Run Full Sync</button>
+                <div id="run-sync-output"></div>
+            </div>
+
+            <div class="sub-section">
+                <h3>Tables Overview</h3>
+                <div id="tables-list">Loading table info...</div>
+            </div>
+
+            <div class="sub-section">
+                <h3>IPFS Storage</h3>
+                <p>IPFS is used for storing files like receipts. The CIDs (Content IDs) are stored in the database.</p>
+                <p>To view IPFS content, you can use an IPFS gateway (e.g., `https://ipfs.io/ipfs/<CID>`).</p>
+                <!-- Further IPFS management features could be added here -->
+            </div>
+
+            <div class="sub-section">
+                <h3>Blockchain Parameters & Smart Contracts</h3>
+                <p>Smart contracts are loaded automatically on API startup.</p>
+                <p>View health check: <a href="/health" target="_blank">/health</a></p>
+                <p>View network info: <a href="/network" target="_blank">/network</a></p>
+                <!-- Functionality to modify parameters (e.g., set new contract addresses) would go here -->
+            </div>
+
+            <div class="sub-section">
+                <h3>API Usage & Template Code</h3>
+                <p>Below are examples of how to interact with your API. Remember to include the `Authorization: Bearer <YOUR_JWT_TOKEN>` header for protected routes.</p>
+                
+                <h4>Register User (Public)</h4>
+                <pre><code>
+curl -X POST /auth/register \
+-H "Content-Type: application/json" \
+-d '{
+    "email": "testuser@example.com",
+    "password": "password123",
+    "role": "user"
+}'
+                </code></pre>
+
+                <h4>Login User (Public)</h4>
+                <pre><code>
+curl -X POST /auth/login \
+-H "Content-Type: application/json" \
+-d '{
+    "email": "testuser@example.com",
+    "password": "password123"
+}'
+// Returns a JWT token on success
+                </code></pre>
+
+                <h4>Create Expense (Protected)</h4>
+                <pre><code>
+curl -X POST /api/expenses \
+-H "Content-Type: application/json" \
+-H "Authorization: Bearer YOUR_JWT_TOKEN" \
+-d '{
+    "user_id": "YOUR_LOCAL_USER_UUID",
+    "vendor_id": "YOUR_LOCAL_VENDOR_UUID",
+    "amount": 100.50,
+    "category": "Food",
+    "description": "Lunch with client",
+    "trip_id": "YOUR_LOCAL_TRIP_UUID"
+}'
+// To include a receipt: use -F "receipt=@/path/to/your/image.jpg" instead of -d and adjust Content-Type.
+                </code></pre>
+
+                <h4>Get All Users (Protected)</h4>
+                <pre><code>
+curl -X GET /api/users \
+-H "Authorization: Bearer YOUR_JWT_TOKEN"
+                </code></pre>
+            </div>
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html> 

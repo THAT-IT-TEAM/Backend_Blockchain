@@ -1,99 +1,82 @@
 const express = require('express');
 const router = express.Router();
 
-// Register new user
-router.post('/register', async (req, res) => {
-    try {
-        const { contracts } = req;
-        const { adminAddress, userAddress, name, email, department } = req.body;
+// Register new user (MOVED to auth.js, commented out here)
+// router.post('/register', async (req, res) => {
+//     try {
+//         const { contracts } = req;
+//         const { adminAddress, userAddress, name, email } = req.body;
         
-        if (!adminAddress || !userAddress || !name || !email || !department) {
-            return res.status(400).json({ error: 'Missing required fields' });
-        }
+//         if (!adminAddress || !userAddress || !name || !email) {
+//             return res.status(400).json({ error: 'Missing required fields' });
+//         }
         
-        const result = await contracts.userRegistry.methods
-            .registerUser(userAddress, name, email, department)
-            .send({ from: adminAddress, gas: 300000 });
+//         const result = await contracts.userRegistry.methods
+//             .registerUser(userAddress, name, email)
+//             .send({ from: adminAddress, gas: 300000 });
         
-        res.json({
-            success: true,
-            transactionHash: result.transactionHash
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
+//         res.json({
+//             success: true,
+//             transactionHash: result.transactionHash
+//         });
+//     } catch (error) {
+//         res.status(500).json({ error: error.message });
+//     }
+// });
 
-// Get all users
+// Get all users (now from local SQLite)
 router.get('/', async (req, res) => {
+    const { db } = req; // Access the SQLite database instance
     try {
-        const { contracts } = req;
-        
-        const userAddresses = await contracts.userRegistry.methods
-            .getAllUsers()
-            .call();
-        
-        const users = [];
-        for (const address of userAddresses) {
-            const user = await contracts.userRegistry.methods
-                .getUser(address)
-                .call();
-            
-            users.push({
-                address: user.userAddress,
-                name: user.name,
-                email: user.email,
-                department: user.department,
-                isActive: user.isActive,
-                isAdmin: user.isAdmin,
-                registrationTime: new Date(Number(user.registrationTime) * 1000),
-                totalExpenses: Number(user.totalExpenses),
-                totalReimbursed: Number(user.totalReimbursed)
+        const users = await new Promise((resolve, reject) => {
+            db.all(`SELECT id, email, wallet_id, role, created_at, updated_at FROM users`, [], (err, rows) => {
+                if (err) return reject(err);
+                resolve(rows);
             });
-        }
-        
+        });
         res.json({ users });
     } catch (error) {
+        console.error('Error fetching users from local DB:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Get user by address
+// Get user by address (now from local SQLite using wallet_id)
 router.get('/:address', async (req, res) => {
+    const { db } = req; // Access the SQLite database instance
+    const userAddress = req.params.address; // This is the wallet_id
     try {
-        const { contracts } = req;
-        const userAddress = req.params.address;
+        const user = await new Promise((resolve, reject) => {
+            db.get(`SELECT id, email, wallet_id, role, created_at, updated_at FROM users WHERE wallet_id = ?`, [userAddress], (err, row) => {
+                if (err) return reject(err);
+                resolve(row);
+            });
+        });
         
-        const user = await contracts.userRegistry.methods
-            .getUser(userAddress)
-            .call();
-        
-        if (!user.isActive && user.registrationTime === '0') {
-            return res.status(404).json({ error: 'User not found' });
+        if (!user) {
+            return res.status(404).json({ error: 'User not found in local database with this wallet ID' });
         }
         
         res.json({
-            address: user.userAddress,
-            name: user.name,
+            id: user.id,
             email: user.email,
-            department: user.department,
-            isActive: user.isActive,
-            isAdmin: user.isAdmin,
-            registrationTime: new Date(Number(user.registrationTime) * 1000),
-            totalExpenses: Number(user.totalExpenses),
-            totalReimbursed: Number(user.totalReimbursed)
+            wallet_id: user.wallet_id,
+            role: user.role,
+            created_at: user.created_at,
+            updated_at: user.updated_at
         });
     } catch (error) {
+        console.error('Error fetching user by wallet ID from local DB:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Grant admin privileges
+// Grant admin privileges (still interacts with blockchain)
 router.put('/:address/grant-admin', async (req, res) => {
     try {
         const { contracts } = req;
         const { ownerAddress } = req.body;
-        const userAddress = req.params.address;
+        const userAddress = req.params.address; // Assumed to be blockchain address
         
         if (!ownerAddress) {
             return res.status(400).json({ error: 'Owner address required' });
@@ -112,12 +95,12 @@ router.put('/:address/grant-admin', async (req, res) => {
     }
 });
 
-// Revoke admin privileges
+// Revoke admin privileges (still interacts with blockchain)
 router.put('/:address/revoke-admin', async (req, res) => {
     try {
         const { contracts } = req;
         const { ownerAddress } = req.body;
-        const userAddress = req.params.address;
+        const userAddress = req.params.address; // Assumed to be blockchain address
         
         if (!ownerAddress) {
             return res.status(400).json({ error: 'Owner address required' });
@@ -136,12 +119,12 @@ router.put('/:address/revoke-admin', async (req, res) => {
     }
 });
 
-// Deactivate user
+// Deactivate user (still interacts with blockchain)
 router.put('/:address/deactivate', async (req, res) => {
     try {
         const { contracts } = req;
         const { adminAddress } = req.body;
-        const userAddress = req.params.address;
+        const userAddress = req.params.address; // Assumed to be blockchain address
         
         if (!adminAddress) {
             return res.status(400).json({ error: 'Admin address required' });
@@ -160,12 +143,12 @@ router.put('/:address/deactivate', async (req, res) => {
     }
 });
 
-// Activate user
+// Activate user (still interacts with blockchain)
 router.put('/:address/activate', async (req, res) => {
     try {
         const { contracts } = req;
         const { adminAddress } = req.body;
-        const userAddress = req.params.address;
+        const userAddress = req.params.address; // Assumed to be blockchain address
         
         if (!adminAddress) {
             return res.status(400).json({ error: 'Admin address required' });
