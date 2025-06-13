@@ -19,4 +19,10 @@ router.post('/', authenticateJWT, upload.single('file'), FileController.uploadFi
 // Delete a file by CID
 router.delete('/:cid', authenticateJWT, FileController.deleteFile);
 
+// Delete a bucket and all its files
+router.delete('/bucket/:bucketName', authenticateJWT, FileController.deleteBucket);
+
+// Create a new bucket
+router.post('/bucket', authenticateJWT, FileController.createBucket);
+
 module.exports = router;

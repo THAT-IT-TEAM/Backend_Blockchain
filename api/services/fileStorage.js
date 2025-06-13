@@ -73,7 +73,7 @@ class FileStorageService {
     // List files with optional query
     async listFiles(query = {}, options = {}) {
         return new Promise((resolve, reject) => {
-            let cursor = this.db.find(query);
+            let cursor = this.db.find({ ...query, type: { $ne: 'bucket' } });
             
             // Apply sorting
             if (options.sort) {
@@ -137,6 +137,32 @@ class FileStorageService {
             this.db.count(query, (err, count) => {
                 if (err) return reject(err);
                 resolve(count);
+            });
+        });
+    }
+
+    // Delete all files in a bucket for a user
+    async deleteBucket(bucketName, userId) {
+        return new Promise((resolve, reject) => {
+            this.db.remove({ bucket: bucketName, uploadedBy: userId }, { multi: true }, (err, numRemoved) => {
+                if (err) return reject(err);
+                resolve(numRemoved);
+            });
+        });
+    }
+
+    // Create a new bucket for a user
+    async createBucket(name, userId) {
+        return new Promise((resolve, reject) => {
+            // Check if bucket already exists
+            this.db.findOne({ bucket: name, uploadedBy: userId, type: 'bucket' }, (err, doc) => {
+                if (err) return reject(err);
+                if (doc) return resolve(doc); // Already exists
+                // Insert dummy record to represent the bucket
+                this.db.insert({ bucket: name, uploadedBy: userId, type: 'bucket', createdAt: new Date() }, (err, newDoc) => {
+                    if (err) return reject(err);
+                    resolve(newDoc);
+                });
             });
         });
     }

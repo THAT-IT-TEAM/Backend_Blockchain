@@ -197,15 +197,30 @@ export default function UsersPage() {
                       className="px-6 py-4 whitespace-nowrap text-sm text-foreground"
                     >
                       {col.name !== "id" && !col.pk ? (
-                        <input
-                          type="text"
-                          name={col.name}
-                          value={newRecord[col.name] || ""}
-                          onChange={(e) =>
-                            handleNewRecordChange(e, index, col.name)
-                          }
-                          className="block w-full border-border rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm p-1 bg-background text-foreground"
-                        />
+                        col.name === "role" ? (
+                          <select
+                            name={col.name}
+                            value={newRecord[col.name] || "user"}
+                            onChange={(e) =>
+                              handleNewRecordChange(e, index, col.name)
+                            }
+                            className="block w-full border-border rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm p-1 bg-background text-foreground"
+                          >
+                            <option value="user">user</option>
+                            <option value="admin">admin</option>
+                            <option value="vendor">vendor</option>
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            name={col.name}
+                            value={newRecord[col.name] || ""}
+                            onChange={(e) =>
+                              handleNewRecordChange(e, index, col.name)
+                            }
+                            className="block w-full border-border rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm p-1 bg-background text-foreground"
+                          />
+                        )
                       ) : (
                         <span className="text-muted-foreground">
                           Auto-generated

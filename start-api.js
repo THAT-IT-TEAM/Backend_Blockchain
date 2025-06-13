@@ -1,10 +1,9 @@
 const { spawn, execSync } = require('child_process');
 const path = require('path');
 const net = require('net');
-const ngrok = require('ngrok');
 
 // --- Auto-installer for required packages ---
-const requiredPackages = ['ngrok', 'web3', 'uuid', 'formidable'];
+const requiredPackages = ['web3', 'uuid', 'formidable'];
 for (const pkg of requiredPackages) {
   try {
     require.resolve(pkg);
@@ -100,26 +99,6 @@ async function deployContracts() {
     }
 }
 
-async function startNgrok(port) {
-    try {
-        const ngrokConfig = {
-            addr: port,
-            authtoken: process.env.NGROK_AUTHTOKEN,
-            region: 'us'
-        };
-        if (process.env.NGROK_DOMAIN) {
-            ngrokConfig.hostname = process.env.NGROK_DOMAIN;
-            log('ngrok', `Using custom ngrok domain: ${process.env.NGROK_DOMAIN}`, 'yellow');
-        }
-        const url = await ngrok.connect(ngrokConfig);
-        log('ngrok', `API is accessible via ngrok: ${url}`, 'green');
-        return url;
-    } catch (error) {
-        log('ngrok', `Failed to start ngrok: ${error.message}`, 'red');
-        return null;
-    }
-}
-
 async function main() {
     // 1. Start Ganache as a subprocess
     log('Ganache', 'Starting Ganache CLI as a subprocess...', 'magenta');
@@ -146,11 +125,6 @@ async function main() {
     // 4. Start API (with auto-install retry)
     log('API', 'Starting API...', 'magenta');
     spawnProcessWithAutoInstall('API', 'node', ['blockchain-api.js'], path.join(__dirname, 'api'));
-
-    // 5. Start ngrok (after API is running)
-    if (process.env.NGROK_AUTHTOKEN) {
-        await startNgrok(process.env.PORT || 3050);
-    }
 
     // 6. Start Dashboard (with auto-install retry)
     log('Dashboard', 'Starting Dashboard...', 'magenta');

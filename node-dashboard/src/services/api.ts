@@ -201,6 +201,31 @@ class ApiService {
     const response = await this.client.post('/api/files', fileData);
     return response.data;
   }
+
+  // Add this method for deleting a bucket
+  async deleteBucket(bucketName: string) {
+    const response = await this.client.delete(`/api/files/bucket/${encodeURIComponent(bucketName)}`);
+    return response.data;
+  }
+
+  // Add this method for uploading a file to a specific bucket
+  async uploadFileToBucket(file: File, bucketName: string) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('bucket', bucketName);
+    const response = await this.client.post(`/api/files`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  }
+
+  // Add this method for creating a bucket
+  async createBucket(bucketName: string) {
+    const response = await this.client.post('/api/files/bucket', { name: bucketName });
+    return response.data;
+  }
 }
 
 export const api = new ApiService();

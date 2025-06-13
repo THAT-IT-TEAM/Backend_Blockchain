@@ -37,6 +37,8 @@ Follow these steps to get the application up and running:
     JWT_SECRET=YOUR_VERY_STRONG_RANDOM_SECRET_KEY_HERE # IMPORTANT: Replace with a strong, random string
     ```
 
+    **Note:** If `NGROK_AUTHTOKEN` and `NGROK_DOMAIN` are provided, the API will expose itself to the internet via ngrok, and the public URL will be printed in the console when the API starts.
+
     **Remember to replace `YOUR_VERY_STRONG_RANDOM_SECRET_KEY_HERE` with a unique, strong secret key.**
 
 3.  **Start your blockchain network:**
@@ -82,23 +84,22 @@ Follow these steps to get the application up and running:
     # npm start
     ```
 
-    The API will start on the configured `PORT` (default 3000), and if ngrok is set up, it will provide a public URL.
+    The API will start on the configured `PORT` (default 3000). If `NGROK_AUTHTOKEN` and `NGROK_DOMAIN` are set in the `Backend_Blockchain/api/.env` file, the public ngrok URL will be displayed in the terminal where the API service is running.
 
-7.  **Access the Admin Panel:**
-    Open your web browser and navigate to:
+7.  **Access the Admin Panel and Dashboard:**
+    The dashboard is now integrated into the API project. You can access it via:
     ```
-    http://localhost:3000/admin.html
+    http://localhost:3001 # Assuming your dashboard runs on port 3001 as per start-api.js
     ```
-    (Replace `3000` with your configured `PORT` if different).
-    You can log in with an admin user created via the `/auth/register` endpoint (you'll need to use `curl` or a tool like Postman for initial user creation).
+    Log in with an admin user created via the `/auth/register` endpoint (you'll need to use `curl` or a tool like Postman for initial user creation, or use the registration form on the dashboard).
 
 ## API Endpoints
 
-The API now features local database integration and JWT-based authentication. Remember to include the `Authorization: Bearer <YOUR_JWT_TOKEN>` header for protected routes.
+The API now features local database integration, JWT-based authentication, and generic CRUD operations for database tables. Remember to include the `Authorization: Bearer <YOUR_JWT_TOKEN>` header for protected routes.
 
 ### Authentication (Public)
 
-- `POST /auth/register` - Register a new user (admin, user, or vendor role)
+- `POST /auth/register` - Register a new user (admin, user, or vendor role). Automatically creates a wallet and profile entry.
 - `POST /auth/login` - Authenticate a user and receive a JWT
 
 ### Health & Network (Public)
@@ -112,9 +113,16 @@ The API now features local database integration and JWT-based authentication. Re
 - `GET /api/sync-check` - Compare local user/vendor profiles with blockchain registrations.
 - `POST /api/run-sync` - Run a full synchronization process (generates wallets for unsynced users, registers on blockchain).
 
+### Generic Database CRUD (Protected)
+
+These endpoints allow for viewing, creating, updating, and deleting records in any database table exposed by the API. They are utilized by the dashboard's "Database Inspector" page.
+
+- `GET /api/db/relationships` - Get database table relationships.
+
 ### Users (Protected)
 
-- `GET /api/users` - Get all users from the local database
+- `GET /api/users` - Get all users from the local database.
+- `POST /api/users` - Create a new user (admin, user, or vendor role). Automatically creates a wallet and profile entry.
 - `GET /api/users/:address` - Get user details from the local database by blockchain wallet address
 - `PUT /api/users/:address/grant-admin` - Grant admin privileges (on blockchain)
 - `PUT /api/users/:address/revoke-admin` - Revoke admin privileges (on blockchain)
@@ -162,6 +170,7 @@ docker-compose up -d
 - **Admin Panel Login Issues:**
   - Ensure `JWT_SECRET` is set in your `Backend_Blockchain/api/.env` file.
   - Verify you're using an email and password for a user with the `admin` role. You might need to register an admin user first via `curl` to `/auth/register`.
+- **Ngrok link not showing:** Ensure `NGROK_AUTHTOKEN` and `NGROK_DOMAIN` are correctly set in `Backend_Blockchain/api/.env` and that `ngrok` npm package is installed in `Backend_Blockchain/api/`.
 
 ## Development
 

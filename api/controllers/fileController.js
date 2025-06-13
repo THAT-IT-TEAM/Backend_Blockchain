@@ -152,6 +152,43 @@ class FileController {
             });
         }
     }
+
+    // Delete a bucket and all its files
+    static async deleteBucket(req, res) {
+        try {
+            const bucketName = req.params.bucketName;
+            const userId = req.user.userId;
+            const deletedCount = await fileStorage.deleteBucket(bucketName, userId);
+            res.json({ success: true, deletedCount });
+        } catch (error) {
+            console.error('Bucket deletion error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to delete bucket',
+                details: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
+        }
+    }
+
+    // Create a new bucket
+    static async createBucket(req, res) {
+        try {
+            const name = req.body.name;
+            const userId = req.user.userId;
+            if (!name || typeof name !== 'string' || !name.trim()) {
+                return res.status(400).json({ success: false, error: 'Bucket name is required' });
+            }
+            await fileStorage.createBucket(name.trim(), userId);
+            res.status(201).json({ success: true, name: name.trim() });
+        } catch (error) {
+            console.error('Bucket creation error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to create bucket',
+                details: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
+        }
+    }
 }
 
 module.exports = FileController;

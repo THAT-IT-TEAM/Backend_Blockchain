@@ -7,6 +7,7 @@ const fs = require('fs');
 const Web3 = require('web3');
 const { v4: uuidv4 } = require('uuid');
 const formidable = require('formidable');
+const ngrok = require('ngrok');
 require('dotenv').config(); // Load environment variables from .env file
 
 const PORT = process.env.PORT || 3050;
@@ -58,9 +59,23 @@ const USERS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS users (
 );`;
 db.run(USERS_TABLE_SQL, () => {
   // Insert default admin if not exists
-  db.get('SELECT * FROM users WHERE email = ?', ['admin@blockchain.com'], (err, user) => {
+  db.get('SELECT * FROM users WHERE email = ?', ['admin@blockchain.com'], async (err, user) => {
     if (!user) {
-      db.run('INSERT INTO users (email, password, role) VALUES (?, ?, ?)', ['admin@blockchain.com', 'admin123', 'admin']);
+      // Insert admin user
+      await new Promise((resolve, reject) => {
+        db.run('INSERT INTO users (email, password, role) VALUES (?, ?, ?)', ['admin@blockchain.com', 'admin123', 'admin'], function(err) {
+          if (err) return reject(err);
+          const userId = this.lastID;
+          // Create wallet
+          const wallet = web3.eth.accounts.create();
+          const walletId = wallet.address;
+          // Insert into profiles (not users)
+          db.run('INSERT INTO profiles (user_id, wallet_id, email, role) VALUES (?, ?, ?, ?)', [userId, walletId, 'admin@blockchain.com', 'admin'], function(err) {
+            if (err) return reject(err);
+            resolve();
+          });
+        });
+      });
     }
   });
 });
@@ -175,6 +190,36 @@ const uploadsDir = path.join(__dirname, 'uploads');
   }
 });
 
+// --- Logging function (copy from start-api.js for consistency) ---
+function log(service, message, color) {
+    const colors = {
+        red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m', blue: '\x1b[34m', magenta: '\x1b[35m', cyan: '\x1b[36m', gray: '\x1b[90m', reset: '\x1b[0m',
+    };
+    const colorCode = colors[color] || colors.reset;
+    console.log(`[${new Date().toISOString()}] [${service}] ${colorCode}${message}${colors.reset}`);
+}
+
+// --- Ngrok start function (copy from start-api.js) ---
+async function startNgrok(port) {
+    try {
+        const ngrokConfig = {
+            addr: port,
+            authtoken: process.env.NGROK_AUTHTOKEN,
+            region: 'us'
+        };
+        if (process.env.NGROK_DOMAIN) {
+            ngrokConfig.hostname = process.env.NGROK_DOMAIN;
+            log('ngrok', `Using custom ngrok domain: ${process.env.NGROK_DOMAIN}`, 'yellow');
+        }
+        const url = await ngrok.connect(ngrokConfig);
+        log('ngrok', `API is accessible via ngrok: ${url}`, 'green');
+        return url;
+    } catch (error) {
+        log('ngrok', `Failed to start ngrok: ${error.message}`, 'red');
+        return null;
+    }
+}
+
 function getOrigin(req) {
   // Allow only the dashboard origin
   const allowedOrigin = 'http://localhost:3001';
@@ -253,15 +298,31 @@ const server = http.createServer(async (req, res) => {
     const body = await parseBody(req);
     if (!body.email || !body.password || !body.role) return send(res, 400, { error: 'Missing fields' }, req);
     try {
+      // 1. Insert user (no wallet_id)
+      let userId;
       await new Promise((resolve, reject) => {
         db.run('INSERT INTO users (email, password, role) VALUES (?, ?, ?)', [body.email, body.password, body.role], function(err) {
+          if (err) return reject(err);
+          userId = this.lastID;
+          resolve();
+        });
+      });
+
+      // 2. Create wallet
+      const wallet = web3.eth.accounts.create();
+      const walletId = wallet.address;
+
+      // 3. Insert into profiles (not users)
+      await new Promise((resolve, reject) => {
+        db.run('INSERT INTO profiles (user_id, wallet_id, email, role) VALUES (?, ?, ?, ?)', [userId, walletId, body.email, body.role], function(err) {
           if (err) return reject(err);
           resolve();
         });
       });
-      return send(res, 201, { success: true }, req);
+
+      return send(res, 201, { success: true, userId, walletId }, req);
     } catch (e) {
-      return send(res, 400, { error: 'User already exists' }, req);
+      return send(res, 400, { error: 'User already exists or DB error', details: e.message }, req);
     }
   }
 
@@ -371,9 +432,25 @@ const server = http.createServer(async (req, res) => {
         const columns = Object.keys(body).join(', ');
         const placeholders = Object.keys(body).map(() => '?').join(', ');
         const values = Object.values(body);
-        db.run(`INSERT INTO ${table} (${columns}) VALUES (${placeholders})`, values, function(err) {
+        db.run(`INSERT INTO ${table} (${columns}) VALUES (${placeholders})`, values, async function(err) {
           if (err) return send(res, 400, { error: `Insert failed: ${err.message}` }, req);
-          return send(res, 201, { id: this.lastID, success: true }, req);
+          // If creating a user, also create wallet and profile
+          if (table === 'users') {
+            const userId = this.lastID;
+            const wallet = web3.eth.accounts.create();
+            const walletId = wallet.address;
+            const email = body.email;
+            const role = body.role || 'user';
+            await new Promise((resolve, reject) => {
+              db.run('INSERT INTO profiles (user_id, wallet_id, email, role) VALUES (?, ?, ?, ?)', [userId, walletId, email, role], function(err) {
+                if (err) return reject(err);
+                resolve();
+              });
+            });
+            return send(res, 201, { id: userId, walletId, success: true }, req);
+          } else {
+            return send(res, 201, { id: this.lastID, success: true }, req);
+          }
         });
         break;
       case 'PUT':
@@ -414,9 +491,17 @@ const server = http.createServer(async (req, res) => {
 
   // --- RESTful FILES ENDPOINTS (admin only) ---
   // GET /api/files
-  if (requestPath === '/api/files' && method === 'GET') {
+  if (requestPath.startsWith('/api/files') && method === 'GET') {
     if (!isAdmin(req)) return send(res, 403, { error: 'Forbidden' }, req);
-    db.all('SELECT * FROM files', [], (err, rows) => {
+    const urlObj = url.parse(req.url, true);
+    const bucket = urlObj.query.bucket;
+    let sql = 'SELECT * FROM files';
+    let params = [];
+    if (bucket) {
+      sql += ' WHERE json_extract(metadata, "$.bucket") = ?';
+      params.push(bucket);
+    }
+    db.all(sql, params, (err, rows) => {
       if (err) return send(res, 500, { error: 'Database error' }, req);
       return send(res, 200, { files: rows }, req);
     });
@@ -425,19 +510,38 @@ const server = http.createServer(async (req, res) => {
   // POST /api/files (multipart upload)
   if (requestPath === '/api/files' && method === 'POST') {
     if (!isAdmin(req)) return send(res, 403, { error: 'Forbidden' }, req);
-    const form = formidable({ multiples: false, uploadDir: path.join(__dirname, 'uploads'), keepExtensions: true });
+    const form = new formidable.IncomingForm({ multiples: false, uploadDir: path.join(__dirname, 'uploads'), keepExtensions: true });
     form.parse(req, (err, fields, filesObj) => {
+      console.log('DEBUG fields:', fields);
+      console.log('DEBUG filesObj:', filesObj);
+      let file = filesObj.file;
+      if (Array.isArray(file)) {
+        file = file[0];
+      }
+      if (!file && filesObj && Object.keys(filesObj).length > 0) {
+        file = filesObj[Object.keys(filesObj)[0]];
+        if (Array.isArray(file)) file = file[0];
+        console.log('DEBUG fallback file:', file);
+      }
       if (err) return send(res, 400, { error: 'File upload failed', details: err.message }, req);
-      const file = filesObj.file;
       if (!file) return send(res, 400, { error: 'No file uploaded' }, req);
-      // Move file to correct bucket if specified
-      const bucket = fields.bucket || 'data-storage';
+      // Ensure values are strings, not arrays, and not undefined
+      const bucket = Array.isArray(fields.bucket) ? fields.bucket[0] : fields.bucket || 'data-storage';
+      const originalFilename = Array.isArray(file.originalFilename) ? file.originalFilename[0] : file.originalFilename;
+      const filepath = Array.isArray(file.filepath) ? file.filepath[0] : file.filepath;
+      if (!bucket || !originalFilename || !filepath) {
+        return send(res, 400, { error: 'Missing file or bucket information' }, req);
+      }
       const bucketPath = path.join(__dirname, 'uploads', bucket);
       if (!fs.existsSync(bucketPath)) fs.mkdirSync(bucketPath, { recursive: true });
-      const destPath = path.join(bucketPath, file.originalFilename);
-      fs.renameSync(file.filepath, destPath);
-      db.run('INSERT INTO files (name, size, mimetype, uploaded_by, metadata) VALUES (?, ?, ?, ?, ?)', [file.originalFilename, file.size, file.mimetype, 1, JSON.stringify({ bucket })]);
-      return send(res, 201, { success: true, filename: file.originalFilename }, req);
+      const destPath = path.join(bucketPath, originalFilename);
+      fs.renameSync(filepath, destPath);
+      console.log('[UPLOAD] Saved file to:', destPath);
+      db.run('INSERT INTO files (name, size, mimetype, uploaded_by, metadata) VALUES (?, ?, ?, ?, ?)', [originalFilename, file.size, file.mimetype, 1, JSON.stringify({ bucket })], function(err) {
+        if (err) return send(res, 500, { error: 'Failed to save file to DB', details: err.message }, req);
+        // Return the new file's ID and filename
+        return send(res, 201, { success: true, id: this.lastID, filename: originalFilename }, req);
+      });
     });
     return;
   }
@@ -476,8 +580,8 @@ const server = http.createServer(async (req, res) => {
         fs.unlinkSync(filePath);
       }
       // Delete file entry from database
-      db.run('DELETE FROM files WHERE id = ?', [fileId], function(dbErr) {
-        if (dbErr) return send(res, 500, { error: 'Failed to delete file from DB', details: dbErr.message }, req);
+      db.run('DELETE FROM files WHERE id = ?', [fileId], function(err) {
+        if (err) return send(res, 500, { error: 'Failed to delete file from DB', details: err.message }, req);
         return send(res, 200, { success: true, message: 'File deleted successfully' }, req);
       });
     });
@@ -630,11 +734,75 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Serve static files from /uploads
+  if (req.url.startsWith('/uploads/')) {
+    const filePath = path.join(__dirname, decodeURIComponent(req.url));
+    console.log('[STATIC SERVE] Looking for file:', filePath);
+    // Security: ensure the file is within the uploads directory
+    if (!filePath.startsWith(path.join(__dirname, 'uploads'))) {
+      res.writeHead(403, { 'Content-Type': 'text/plain' });
+      res.end('Forbidden');
+      return;
+    }
+    if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Not found');
+      return;
+    }
+    // Guess content type
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeTypes = {
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.pdf': 'application/pdf',
+      '.csv': 'text/csv',
+      '.txt': 'text/plain',
+      '.json': 'application/json',
+      '.svg': 'image/svg+xml',
+      '.webp': 'image/webp',
+      '.bmp': 'image/bmp',
+      '.ico': 'image/x-icon',
+      '.zip': 'application/zip',
+      '.tar': 'application/x-tar',
+      '.gz': 'application/gzip',
+      '.mp4': 'video/mp4',
+      '.mp3': 'audio/mpeg',
+      '.wav': 'audio/wav',
+      '.ogg': 'audio/ogg',
+      '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.xls': 'application/vnd.ms-excel',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.ppt': 'application/vnd.ms-powerpoint',
+      '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      // add more as needed
+    };
+    const contentType = mimeTypes[ext] || 'application/octet-stream';
+    // For images and pdfs, use inline; for others, use attachment
+    const inlineTypes = ['image/png','image/jpeg','image/gif','image/webp','image/bmp','image/svg+xml','application/pdf'];
+    const disposition = inlineTypes.includes(contentType) ? 'inline' : 'attachment';
+    res.writeHead(200, {
+      'Content-Type': contentType,
+      'Content-Disposition': `${disposition}; filename="${path.basename(filePath)}"`,
+      'Access-Control-Allow-Origin': getOrigin(req),
+      'Access-Control-Allow-Credentials': 'true',
+    });
+    fs.createReadStream(filePath).pipe(res);
+    return;
+  }
+
   // No route matched
   console.log(`No route matched for: ${method} ${requestPath}. Sending 404.`);
   send(res, 404, { error: 'Not found' }, req);
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
+  // Start ngrok only if authtoken is provided
+  if (process.env.NGROK_AUTHTOKEN) {
+    log('ngrok', 'Starting ngrok...', 'magenta');
+    await startNgrok(PORT);
+  }
 });

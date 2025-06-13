@@ -24,18 +24,19 @@ A robust backend API for the Multi-Vendor Expense Tracker, built with Node.js, E
 ## Features
 
 - JWT-based authentication
-- User and vendor management
+- User and vendor management (with automatic wallet and profile creation)
 - Expense tracking
+- File storage with bucket management and direct links
 - Integration with Ganache blockchain
-- SQLite database for local storage
-- Ngrok tunneling for public access
+- SQLite database for local storage with generic CRUD operations
+- Ngrok tunneling for public access via custom domains
 - Automatic contract deployment
 
 ## Prerequisites
 
-- Node.js 14+ and npm
+- Node.js 16+ and npm 8+
 - Ganache CLI (for local blockchain)
-- Ngrok account (for public access)
+- Ngrok account (for public access with custom domains)
 
 ## Installation
 
@@ -58,12 +59,12 @@ A robust backend API for the Multi-Vendor Expense Tracker, built with Node.js, E
 
 ### Environment Variables
 
-Create a `.env` file in the root directory with the following variables:
+Create a `.env` file in the API directory (`Backend_Blockchain/api/.env`) with the following variables:
 
 ```env
 # App Configuration
 NODE_ENV=development
-PORT=3001
+PORT=3050 # API server now runs on port 3050
 
 # Database
 DB_PATH=./data/app.db
@@ -76,21 +77,21 @@ BLOCKCHAIN_RPC_URL=http://localhost:8545
 PRIVATE_KEY=your_private_key_here
 
 # Ngrok Configuration (optional)
-NGROK_ENABLED=true
-NGROK_AUTHTOKEN=your_ngrok_authtoken
-NGROK_DOMAIN=your-custom-domain.ngrok-free.app
+NGROK_AUTHTOKEN=your_ngrok_authtoken # Required to enable ngrok
+NGROK_DOMAIN=your-custom-domain.ngrok-free.app # Optional: Your custom ngrok domain
 
 # IPFS (optional)
 IPFS_API_URL=/ip4/127.0.0.1/tcp/5001
 IPFS_GATEWAY_URL=http://localhost:8080/ipfs/
 
 # CORS (comma-separated list of allowed origins)
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001,YOUR_NGROK_DOMAIN_HERE # Add your ngrok domain if using
 ```
 
 ## Setting Up Ganache
 
 1. Install Ganache CLI globally:
+
    ```bash
    npm install -g ganache-cli
    ```
@@ -103,16 +104,19 @@ ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
 ## Deploying Smart Contracts
 
 1. Navigate to the root directory:
+
    ```bash
    cd Backend_Blockchain
    ```
 
 2. Run the deployment script:
+
    ```bash
    ./scripts/deploy-contracts.sh
    ```
 
    This will:
+
    - Compile the smart contracts
    - Deploy them to your local Ganache network
    - Update the contract addresses in the configuration
@@ -123,7 +127,7 @@ ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
 
 ```bash
 # Start the API server
-npm run dev
+npm run dev # Or use `node blockchain-api.js` directly from the API directory
 ```
 
 ### Production Mode
@@ -133,30 +137,34 @@ npm run dev
 npm start
 ```
 
-The API will be available at `http://localhost:3001` (or your configured PORT).
-
-### With Ngrok (for public access)
-
-1. Set `NGROK_ENABLED=true` in your `.env` file
-2. Provide your `NGROK_AUTHTOKEN` and optionally `NGROK_DOMAIN`
-3. Start the server:
-   ```bash
-   npm start
-   ```
-
-The public URL will be displayed in the console when the tunnel is established.
+The API will be available at `http://localhost:3050` (or your configured `PORT`). If `NGROK_AUTHTOKEN` and `NGROK_DOMAIN` are set in your `.env` file, the public ngrok URL will be displayed in the console when the tunnel is established.
 
 ## API Endpoints
 
 ### Authentication
 
-- `POST /auth/register` - Register a new user
+- `POST /auth/register` - Register a new user (automatically creates wallet and profile)
 - `POST /auth/login` - Login and get JWT token
 - `GET /auth/me` - Get current user profile (requires auth)
+
+### Generic Database Operations
+
+These endpoints provide generic CRUD (Create, Read, Update, Delete) functionality for any table in the SQLite database, used by the dashboard's Database Inspector.
+
+- `GET /api/db/tables` - Get a list of all tables in the database.
+- `GET /api/db/:tableName` - Get all data from a specified table.
+- `GET /api/db/:tableName/schema` - Get the schema for a specified table.
+- `GET /api/db/relationships` - Get database table relationships.
+- `GET /api/:tableName` - Get all records from a specified table.
+- `GET /api/:tableName/:id` - Get a specific record from a table by its ID.
+- `POST /api/:tableName` - Create a new record in a specified table.
+- `PUT /api/:tableName/:id` - Update an existing record in a specified table by its ID.
+- `DELETE /api/:tableName/:id` - Delete a record from a specified table by its ID.
 
 ### Users
 
 - `GET /api/users` - Get all users (admin only)
+- `POST /api/users` - Create a new user (automatically creates wallet and profile)
 - `GET /api/users/:id` - Get user by ID
 - `PUT /api/users/:id` - Update user
 - `DELETE /api/users/:id` - Delete user (admin only)
@@ -172,10 +180,20 @@ The public URL will be displayed in the console when the tunnel is established.
 ### Expenses
 
 - `GET /api/expenses` - Get all expenses (filterable)
-- `POST /api/expenses` - Create new expense (requires auth)
+- `POST /api/expenses` - Create new expense (stores in local DB, uploads receipt to IPFS, records on blockchain). Accepts `multipart/form-data` for `receipt` file.
 - `GET /api/expenses/:id` - Get expense by ID
 - `PUT /api/expenses/:id` - Update expense
 - `DELETE /api/expenses/:id` - Delete expense
+
+### Files & Buckets
+
+- `POST /api/files` - Upload a file to a specified bucket (multipart/form-data).
+- `GET /api/files/buckets` - Get a list of all file buckets.
+- `POST /api/files/bucket` - Create a new file bucket.
+- `DELETE /api/files/bucket/:bucketName` - Delete a file bucket and its contents.
+- `GET /api/files/:bucketName` - Get files within a specific bucket.
+- `GET /uploads/:bucketName/:fileName` - Directly access uploaded files.
+- `DELETE /api/files/:fileCid` - Delete a specific file.
 
 ## Testing
 
@@ -196,11 +214,13 @@ npm test
 ### Steps
 
 1. Build the application:
+
    ```bash
    npm run build
    ```
 
 2. Start the application with PM2:
+
    ```bash
    pm2 start ecosystem.config.js --env production
    ```
@@ -211,8 +231,8 @@ npm test
 
 - **Blockchain connection issues**: Ensure Ganache is running and `BLOCKCHAIN_RPC_URL` is correct
 - **Database errors**: Check if the SQLite database file exists and is writable
-- **Authentication issues**: Verify JWT_SECRET is set and consistent
-- **Ngrok not starting**: Check your auth token and internet connection
+- **Authentication issues**: Verify `JWT_SECRET` is set and consistent
+- **Ngrok not starting**: Ensure `NGROK_AUTHTOKEN` is set in your `.env` and `ngrok` npm package is installed (`npm install ngrok`). Also check your internet connection and ngrok logs.
 
 ## License
 

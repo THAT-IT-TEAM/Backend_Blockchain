@@ -247,6 +247,34 @@ export default function DatabasesPage() {
     setNewRecords((prev) => [...prev, emptyRecord]);
   };
 
+  const handleEditRecord = (row: any) => {
+    // TODO: Implement actual edit logic (modal, inline, etc.)
+    alert(
+      `Edit functionality for record ID: ${row.id} will be implemented here.`
+    );
+  };
+
+  const handleDeleteRecord = async (recordId: string) => {
+    if (
+      !window.confirm(
+        `Are you sure you want to delete record with ID: ${recordId}?`
+      )
+    )
+      return;
+    setLoading(true);
+    setError("");
+    try {
+      if (selectedTable) {
+        await api.deleteRecord(selectedTable, recordId);
+        fetchTableDataAndSchema(selectedTable); // Refresh data
+      }
+    } catch (e: any) {
+      setError("Failed to delete record: " + (e.message || "Unknown error"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <>
       <h1 className="text-2xl font-bold mb-4">Database Inspector</h1>
@@ -308,8 +336,8 @@ export default function DatabasesPage() {
                 >
                   Actions
                 </th>
-                  </tr>
-                </thead>
+              </tr>
+            </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {/* Existing Data Rows */}
               {tableData.map((row: any, rowIndex: number) => (
@@ -327,10 +355,16 @@ export default function DatabasesPage() {
                   ))}
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     {/* Actions for existing rows, e.g., Edit, Delete */}
-                    <button className="text-blue-600 hover:text-blue-900 mr-2">
+                    <button
+                      onClick={() => handleEditRecord(row)}
+                      className="text-blue-600 hover:text-blue-900 mr-2"
+                    >
                       Edit
                     </button>
-                    <button className="text-red-600 hover:text-red-900">
+                    <button
+                      onClick={() => handleDeleteRecord(row.id)}
+                      className="text-red-600 hover:text-red-900"
+                    >
                       Delete
                     </button>
                   </td>
@@ -377,10 +411,10 @@ export default function DatabasesPage() {
                       Remove
                     </button>
                   </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                </tr>
+              ))}
+            </tbody>
+          </table>
           <button
             onClick={addEmptyRecordRow}
             className="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
