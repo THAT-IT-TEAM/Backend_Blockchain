@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { api } from "@/services/api";
+import api from "@/services/api";
 
 export default function FilesPage() {
   const [buckets, setBuckets] = useState<string[]>([]);
@@ -13,7 +13,8 @@ export default function FilesPage() {
 
   // Use the same backend base as API calls
   const backendBase =
-    process.env.NEXT_PUBLIC_API_BASE || "https://good-polecat-enormously.ngrok-free.app";
+    process.env.NEXT_PUBLIC_API_BASE ||
+    "https://good-polecat-enormously.ngrok-free.app";
 
   useEffect(() => {
     fetchBuckets();

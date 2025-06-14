@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { hasRole, getCurrentUser } from "@/services/auth";
 
 type NavItem = {
   name: string;
@@ -222,7 +223,198 @@ const navigation: NavItem[] = [
       </svg>
     ),
   },
+  {
+    name: "Test Pages",
+    type: "section",
+    icon: ({ className }) => (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={className}
+      >
+        <path d="M17.5 19.4H6.5c-1.9 0-3.5-1.6-3.5-3.5V6.5c0-1.9 1.6-3.5 3.5-3.5h11c1.9 0 3.5 1.6 3.5 3.5v9.4c0 1.9-1.6 3.5-3.5 3.5z" />
+        <polyline points="9 10 12 13 15 10" />
+      </svg>
+    ),
+    children: [
+      {
+        name: "User Dashboard",
+        href: "/user-dashboard-test",
+        type: "item",
+        icon: ({ className }) => (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={className}
+          >
+            <rect width="7" height="9" x="3" y="3" rx="1" />
+            <rect width="7" height="5" x="14" y="3" rx="1" />
+            <rect width="7" height="9" x="14" y="12" rx="1" />
+            <rect width="7" height="5" x="3" y="16" rx="1" />
+          </svg>
+        ),
+      },
+      {
+        name: "Admin Dashboard",
+        href: "/admin-dashboard-test",
+        type: "item",
+        icon: ({ className }) => (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={className}
+          >
+            <path d="M12 12V2H4v10a4 4 0 0 0 4 4h4a4 4 0 0 0 4-4z" />
+            <path d="M9 18H5a2 2 0 0 0-2 2v2h14v-2a2 2 0 0 0-2-2h-4" />
+            <path d="M7 12v3a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-3" />
+          </svg>
+        ),
+      },
+      {
+        name: "Expense Admin",
+        href: "/expense-admin-test",
+        type: "item",
+        icon: ({ className }) => (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={className}
+          >
+            <path d="M12 2v20" />
+            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+          </svg>
+        ),
+      },
+      {
+        name: "User Reports",
+        href: "/user-reports-test",
+        type: "item",
+        icon: ({ className }) => (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={className}
+          >
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+            <line x1="10" y1="9" x2="8" y2="9" />
+          </svg>
+        ),
+      },
+      {
+        name: "Admin Reports",
+        href: "/admin-reports-test",
+        type: "item",
+        icon: ({ className }) => (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={className}
+          >
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+            <line x1="10" y1="9" x2="8" y2="9" />
+          </svg>
+        ),
+      },
+      {
+        name: "Project Teams",
+        href: "/project-teams-test",
+        type: "item",
+        icon: ({ className }) => (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={className}
+          >
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+        ),
+      },
+      {
+        name: "Vendor Management",
+        href: "/vendor-management-test",
+        type: "item",
+        icon: ({ className }) => (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={className}
+          >
+            <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+          </svg>
+        ),
+      },
+    ],
+  },
 ];
+
+interface NavItemWithRole extends NavItem {
+  adminOnly?: boolean;
+}
 
 type SidebarProps = {
   open: boolean;
@@ -233,6 +425,12 @@ export function Sidebar({ open, setOpen }: SidebarProps) {
   const pathname = usePathname();
   const [openItems, setOpenItems] = useState<Record<string, boolean>>({});
   const [collapsed, setCollapsed] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  useEffect(() => {
+    const user = getCurrentUser();
+    setCurrentUser(user);
+  }, []);
 
   const toggleItem = (name: string) => {
     setOpenItems((prev) => ({
@@ -312,22 +510,88 @@ export function Sidebar({ open, setOpen }: SidebarProps) {
 
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto mt-2">
-            {navigation.map((item) => (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 px-4 py-2 rounded transition-colors",
-                  pathname === item.href
-                    ? "bg-gray-100 text-blue-600 font-semibold"
-                    : "text-gray-700 hover:bg-gray-50",
-                  collapsed ? "justify-center" : ""
-                )}
-              >
-                <IconWrapper icon={item.icon} className="w-5 h-5" />
-                {!collapsed && <span className="truncate">{item.name}</span>}
-              </Link>
-            ))}
+            {navigation.map((item: NavItemWithRole, index) => {
+              // If it's a section with children, render a collapsible section
+              if (item.type === "section" && item.children) {
+                return (
+                  <div key={item.name}>
+                    <button
+                      className="flex w-full items-center justify-between rounded-md p-2 text-sm font-medium transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+                      onClick={() => toggleItem(item.name)}
+                    >
+                      <span className="flex items-center gap-2">
+                        {item.icon && (
+                          <IconWrapper icon={item.icon} className="h-5 w-5" />
+                        )}
+                        {item.name}
+                      </span>
+                      {openItems[item.name] ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4" />
+                      )}
+                    </button>
+                    {openItems[item.name] && (
+                      <div className="ml-4 border-l pl-2">
+                        {item.children.map((childItem: NavItemWithRole) => {
+                          return (
+                            <Link
+                              key={childItem.href}
+                              href={childItem.href}
+                              className={cn(
+                                "flex items-center gap-2 rounded-md p-2 text-sm font-medium transition-colors hover:bg-gray-100 dark:hover:bg-gray-800",
+                                pathname === childItem.href
+                                  ? "bg-gray-100 dark:bg-gray-800"
+                                  : ""
+                              )}
+                              onClick={() => {
+                                if (window.innerWidth < 768) {
+                                  setOpen(false);
+                                }
+                              }}
+                            >
+                              {childItem.icon && (
+                                <IconWrapper
+                                  icon={childItem.icon}
+                                  className="h-4 w-4"
+                                />
+                              )}
+                              {childItem.name}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+              // If it's a regular item, render it directly
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-2 rounded-md p-2 text-sm font-medium transition-colors hover:bg-gray-100 dark:hover:bg-gray-800",
+                    pathname === item.href ? "bg-gray-100 dark:bg-gray-800" : ""
+                  )}
+                  onClick={() => {
+                    if (window.innerWidth < 768) {
+                      setOpen(false);
+                    }
+                  }}
+                >
+                  {item.icon && (
+                    <IconWrapper icon={item.icon} className="h-5 w-5" />
+                  )}
+                  {item.name}
+                  {item.badge && (
+                    <span className="ml-auto rounded-full bg-blue-500 px-2 py-0.5 text-xs font-semibold text-white">
+                      {item.badge}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
           </nav>
 
           {/* User profile section */}

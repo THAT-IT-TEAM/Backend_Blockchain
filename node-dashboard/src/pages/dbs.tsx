@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { api } from "@/services/api";
+import api from "@/services/api";
 import mermaid from "mermaid";
 
 export default function DatabasesPage() {
@@ -14,6 +14,8 @@ export default function DatabasesPage() {
   const [diagramContent, setDiagramContent] = useState<string>(""); // New state for Mermaid diagram
   const [allTableSchemas, setAllTableSchemas] = useState<any>({}); // New state to store all table schemas
   const [newRecords, setNewRecords] = useState<any[]>([{}]); // Array to hold new records, starting with one empty.
+  const [editingRecord, setEditingRecord] = useState<any | null>(null); // State for the record being edited
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false); // State to control edit modal visibility
 
   const mermaidRef = useRef<HTMLDivElement>(null); // Ref for the Mermaid diagram div
 
@@ -23,26 +25,29 @@ export default function DatabasesPage() {
   }, []);
 
   useEffect(() => {
-    if (diagramContent && mermaidRef.current) {
-      console.log("Mermaid Diagram Content:", diagramContent);
-      const renderMermaid = async () => {
-        try {
-          // Ensure the div is ready and clear previous content
-          mermaidRef.current.innerHTML = "";
-          // Use mermaid.render for more direct control
-          const { svg } = await mermaid.render("temp-diagram", diagramContent);
-          if (mermaidRef.current) {
-            mermaidRef.current.innerHTML = svg;
-          }
-        } catch (e) {
-          console.error("Mermaid rendering error:", e);
-          if (mermaidRef.current) {
-            mermaidRef.current.innerHTML =
+    if (diagramContent) {
+      const currentMermaidRef = mermaidRef.current; // Capture the current ref value
+      if (currentMermaidRef) {
+        // Explicitly check the captured value
+        console.log("Mermaid Diagram Content:", diagramContent);
+        const renderMermaid = async () => {
+          try {
+            // Ensure the div is ready and clear previous content
+            currentMermaidRef.innerHTML = ""; // Use the captured value
+            // Use mermaid.render for more direct control
+            const { svg } = await mermaid.render(
+              "temp-diagram",
+              diagramContent
+            );
+            currentMermaidRef.innerHTML = svg; // Use the captured value
+          } catch (e) {
+            console.error("Mermaid rendering error:", e);
+            currentMermaidRef.innerHTML =
               '<p class="text-red-500">Failed to render diagram. Check console for details.</p>';
           }
-        }
-      };
-      renderMermaid();
+        };
+        renderMermaid();
+      }
     }
   }, [diagramContent]);
 
@@ -126,11 +131,9 @@ export default function DatabasesPage() {
       }
 
       // Add dynamically fetched relationships
-      for (const tableName in relationshipsData) {
-        relationshipsData[tableName].forEach((fk: any) => {
-          mermaidContent += `  ${tableName} <.. ${fk.table} : "${fk.from} -> ${fk.to}"\n`;
-        });
-      }
+      relationshipsData.forEach((rel: any) => {
+        mermaidContent += `  ${rel.from_table} <.. ${rel.to_table} : "${rel.on}"\n`;
+      });
       setDiagramContent(mermaidContent);
     } catch (e: any) {
       setError("Failed to load tables or relationships: " + e.message);
@@ -248,10 +251,43 @@ export default function DatabasesPage() {
   };
 
   const handleEditRecord = (row: any) => {
-    // TODO: Implement actual edit logic (modal, inline, etc.)
-    alert(
-      `Edit functionality for record ID: ${row.id} will be implemented here.`
-    );
+    setEditingRecord({ ...row }); // Create a copy to edit
+    setIsEditModalOpen(true);
+  };
+
+  const closeEditModal = () => {
+    setIsEditModalOpen(false);
+    setEditingRecord(null);
+    setError(""); // Clear any previous errors
+  };
+
+  const handleEditFormChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >
+  ) => {
+    const { name, value } = e.target;
+    setEditingRecord((prev: any) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleSaveEditedRecord = async () => {
+    if (!editingRecord || !selectedTable) return;
+
+    setLoading(true);
+    setError("");
+
+    try {
+      await api.updateRecord(selectedTable, editingRecord.id, editingRecord);
+      fetchTableDataAndSchema(selectedTable); // Refresh data
+      closeEditModal();
+    } catch (e: any) {
+      setError("Failed to update record: " + (e.message || "Unknown error"));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDeleteRecord = async (recordId: string) => {
@@ -421,6 +457,74 @@ export default function DatabasesPage() {
           >
             Add New Empty Row
           </button>
+        </div>
+      )}
+
+      {/* Edit Record Modal */}
+      {isEditModalOpen && editingRecord && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex justify-center items-center">
+          <div className="relative p-5 border w-11/12 md:max-w-md lg:max-w-2xl xl:max-w-4xl bg-white rounded-md shadow-xl">
+            <h3 className="text-xl font-bold mb-4">
+              Edit Record for {selectedTable}
+            </h3>
+            {error && (
+              <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-4">
+                <div className="flex">
+                  <div className="ml-3">
+                    <p className="text-sm text-red-700">{error}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            <form className="space-y-4">
+              {tableSchema.map((col: any) => (
+                <div key={col.name}>
+                  <label
+                    htmlFor={`edit-${col.name}`}
+                    className="block text-sm font-medium text-gray-700"
+                  >
+                    {col.name}
+                  </label>
+                  {col.name === "id" || col.pk ? (
+                    <input
+                      type="text"
+                      id={`edit-${col.name}`}
+                      name={col.name}
+                      value={editingRecord[col.name] || ""}
+                      disabled
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm bg-gray-100 cursor-not-allowed"
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      id={`edit-${col.name}`}
+                      name={col.name}
+                      value={editingRecord[col.name] || ""}
+                      onChange={handleEditFormChange}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    />
+                  )}
+                </div>
+              ))}
+            </form>
+            <div className="mt-6 flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={closeEditModal}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEditedRecord}
+                disabled={loading}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+              >
+                {loading ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>
