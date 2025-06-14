@@ -827,8 +827,20 @@ const server = http.createServer(async (req, res) => {
         if (!putBody || Object.keys(putBody).length === 0) return send(res, 400, { error: 'Missing body for PUT' }, req);
         const setClause = Object.keys(putBody).map(k => `${k} = ?`).join(', ');
         const putValues = [...Object.values(putBody), id];
-        db.run(`UPDATE ${table} SET ${setClause} WHERE id = ?`, putValues, function(err) {
+        db.run(`UPDATE ${table} SET ${setClause} WHERE id = ?`, putValues, async function(err) {
           if (err) return send(res, 400, { error: `Update failed: ${err.message}` }, req);
+          
+          // Special handling for users table to update the 'role' in the profiles table as well
+          if (table === 'users' && putBody.role) {
+            try {
+              await runAsync('UPDATE profiles SET role = ? WHERE user_id = ?', [putBody.role, id]);
+              console.log(`Updated role for user_id ${id} in profiles table to ${putBody.role}`);
+            } catch (profileErr) {
+              console.error(`Failed to update profile role for user_id ${id}: ${profileErr.message}`);
+              // Do not send 500 error for profile update failure, as the main user update was successful.
+            }
+          }
+
           return send(res, 200, { success: true }, req);
         });
         break;

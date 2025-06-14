@@ -92,6 +92,10 @@ class ApiService {
     return response.data;
   }
 
+  async updateUser(id: string, userData: any) {
+    return this.updateRecord('users', id, userData);
+  }
+
   // Expenses endpoints
   async getExpenses() {
     const response = await this.client.get('/api/expenses');

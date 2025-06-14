@@ -3,7 +3,7 @@
   "rpcUrl": "http://localhost:8545",
   "contracts": {
     "UserRegistry": {
-      "address": "0x49455287eBCC42a875B40724C62519D03e2EDcff",
+      "address": "0xBc53027c52B0Ee6ad90347b8D03A719f30d9d7aB",
       "abi": [
         {
           "inputs": [],
@@ -401,7 +401,7 @@
       ]
     },
     "CompanyRegistry": {
-      "address": "0xe5608e4945998aB5E4548Bc95b421E188095DA8E",
+      "address": "0x8c634b72fF5d6A9F6a0281EEF36365E4db8bDF8d",
       "abi": [
         {
           "inputs": [],
@@ -756,7 +756,7 @@
       ]
     },
     "TripRegistry": {
-      "address": "0x1886Fa412064137BDe9Ea996EA2bB85377de8aB6",
+      "address": "0x959306A913D041D4f634310f6aD3789cBF0e9b18",
       "abi": [
         {
           "inputs": [
@@ -1007,7 +1007,7 @@
       ]
     },
     "ExpenseTracker": {
-      "address": "0xACF05e2a9b757e70C2900432c9b4E08Fdc54dD53",
+      "address": "0x01c4052ac7EEF0cbDdc83F3780149D52D4174776",
       "abi": [
         {
           "inputs": [

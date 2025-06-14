@@ -7,6 +7,9 @@ export default function UsersPage() {
   const [error, setError] = useState("");
   const [tableSchema, setTableSchema] = useState<any[]>([]); // To store schema
   const [newRecords, setNewRecords] = useState<any[]>([{}]); // Array to hold new records
+  const [editingRecord, setEditingRecord] = useState<any | null>(null); // State to hold the record being edited
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false); // State to control modal visibility
+  const [editFormData, setEditFormData] = useState<any>({}); // State to hold form data for the edited record
 
   const fetchUsersAndSchema = async () => {
     setLoading(true);
@@ -100,10 +103,44 @@ export default function UsersPage() {
   };
 
   const handleEditRecord = (record: any) => {
-    // Implement actual edit logic here, e.g., open a modal with populated form or enable inline editing
-    alert(
-      `Edit functionality for record ID: ${record.id} will be implemented here.`
-    );
+    setEditingRecord(record);
+    setEditFormData({ ...record }); // Initialize form data with current record data
+    setIsEditModalOpen(true);
+  };
+
+  const closeEditModal = () => {
+    setIsEditModalOpen(false);
+    setEditingRecord(null);
+    setEditFormData({});
+  };
+
+  const handleEditFormChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >
+  ) => {
+    const { name, value } = e.target;
+    setEditFormData((prev: any) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleSaveEditedRecord = async () => {
+    if (!editingRecord) return;
+
+    setLoading(true);
+    setError("");
+    try {
+      // Assuming api.updateUser exists or will be added, which takes the ID and the updated data
+      await api.updateUser(editingRecord.id, editFormData);
+      fetchUsersAndSchema(); // Refresh data
+      closeEditModal(); // Close the modal after successful save
+    } catch (e: any) {
+      setError("Failed to save record: " + (e.message || "Unknown error"));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDeleteRecord = async (recordId: string) => {
@@ -256,6 +293,73 @@ export default function UsersPage() {
           >
             Add New Empty Row
           </button>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {isEditModalOpen && editingRecord && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+          <div className="bg-card p-6 rounded-lg shadow-lg w-1/2">
+            <h2 className="text-xl font-bold mb-4">
+              Edit Record (ID: {editingRecord.id})
+            </h2>
+            <form>
+              {tableSchema.map((col: any) => {
+                // Skip 'id' and primary key columns for editing
+                if (col.name === "id" || col.pk) {
+                  return null;
+                }
+                return (
+                  <div key={col.name} className="mb-3">
+                    <label
+                      htmlFor={col.name}
+                      className="block text-sm font-medium text-foreground mb-1"
+                    >
+                      {col.name}
+                    </label>
+                    {col.name === "role" ? (
+                      <select
+                        name={col.name}
+                        id={col.name}
+                        value={editFormData[col.name] || ""}
+                        onChange={handleEditFormChange}
+                        className="block w-full border-border rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm p-2 bg-background text-foreground"
+                      >
+                        <option value="user">user</option>
+                        <option value="admin">admin</option>
+                        <option value="vendor">vendor</option>
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        name={col.name}
+                        id={col.name}
+                        value={editFormData[col.name] || ""}
+                        onChange={handleEditFormChange}
+                        className="block w-full border-border rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm p-2 bg-background text-foreground"
+                      />
+                    )}
+                  </div>
+                );
+              })}
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={closeEditModal}
+                  className="mr-2 px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveEditedRecord}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/80"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </>
