@@ -137,10 +137,11 @@ db.run(EXPENSES_TABLE_SQL);
 
 const PROFILES_TABLE_SQL = `CREATE TABLE IF NOT EXISTS profiles (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id TEXT UNIQUE,
+  user_id INTEGER UNIQUE,
   wallet_id TEXT,
   email TEXT,
-  role TEXT DEFAULT 'user'
+  role TEXT DEFAULT 'user',
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );`;
 db.run(PROFILES_TABLE_SQL);
 
@@ -329,13 +330,58 @@ const server = http.createServer(async (req, res) => {
   // Auth login
   if (requestPath === '/auth/login' && method === 'POST') {
     const body = await parseBody(req);
-    db.get('SELECT * FROM users WHERE email = ?', [body.email], (err, user) => {
-      if (err || !user) return send(res, 401, { error: 'Invalid credentials' }, req);
-      if (user.password !== body.password) return send(res, 401, { error: 'Invalid credentials' }, req);
-      const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '8h' });
-      return send(res, 200, { token, user: { id: user.id, email: user.email, role: user.role } }, req);
+    const { email, password, walletId } = body;
+
+    if (!email || !password || !walletId) {
+      return send(res, 400, { error: 'Missing email, password, or wallet ID' }, req);
+    }
+
+    db.get('SELECT * FROM users WHERE email = ?', [email], (err, user) => {
+      if (err || !user) {
+        console.log(`Login attempt for ${email}: User not found or DB error.`);
+        return send(res, 401, { error: 'Invalid credentials' }, req);
+      }
+      if (user.password !== password) {
+        console.log(`Login attempt for ${email}: Incorrect password.`);
+        return send(res, 401, { error: 'Invalid credentials' }, req);
+      }
+
+      // Now, verify wallet ID from profiles table
+      db.get('SELECT wallet_id FROM profiles WHERE user_id = ?', [user.id], (err, profile) => {
+        if (err || !profile || profile.wallet_id !== walletId) {
+          console.log(`Login attempt for ${email}: Wallet ID mismatch or profile not found.`);
+          return send(res, 401, { error: 'Invalid wallet ID' }, req);
+        }
+
+        const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '8h' });
+        console.log(`Login successful for ${email}.`);
+        return send(res, 200, { token, user: { id: user.id, email: user.email, role: user.role } }, req);
+      });
     });
     return;
+  }
+
+  // Handle requests for AI Service Token (Admin only)
+  if (requestPath === '/auth/service-token' && method === 'POST') {
+    // This endpoint should be protected by existing user JWT and require admin role
+    const adminTokenPayload = verifyToken(req);
+    if (!adminTokenPayload || adminTokenPayload.role !== 'admin') {
+      return send(res, 403, { error: 'Forbidden: Admin access required to generate service token.' }, req);
+    }
+
+    try {
+      // Generate a long-lived token for AI services
+      const aiServiceToken = jwt.sign(
+        { id: 'ai-service-user', email: 'ai-service@blockchain.com', role: 'ai-service' },
+        JWT_SECRET,
+        { expiresIn: '1y' } // Token valid for 1 year
+      );
+      log('Auth', 'AI Service Token generated successfully.', 'green');
+      return send(res, 200, { token: aiServiceToken }, req);
+    } catch (e) {
+      log('Auth', `Error generating AI Service Token: ${e.message}`, 'red');
+      return send(res, 500, { error: 'Failed to generate AI Service Token', details: e.message }, req);
+    }
   }
 
   // Blockchain Info
@@ -395,6 +441,14 @@ const server = http.createServer(async (req, res) => {
     console.log('Is Admin Check: Token Payload', tokenPayload);
     console.log('Is Admin Check: User Role', tokenPayload ? tokenPayload.role : 'No Payload');
     return tokenPayload && tokenPayload.role === 'admin';
+  }
+
+  // Helper to check if user is an AI Service
+  function isAIService(req) {
+    const tokenPayload = verifyToken(req);
+    console.log('Is AI Service Check: Token Payload', tokenPayload);
+    console.log('Is AI Service Check: User Role', tokenPayload ? tokenPayload.role : 'No Payload');
+    return tokenPayload && tokenPayload.role === 'ai-service';
   }
 
   // Generic CRUD for all tables (admin only)
@@ -630,17 +684,29 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // --- RESTful USERS ENDPOINTS (admin only) ---
-  if (requestPath.startsWith('/api/users')) return handleCrud('users', 'users', req, res);
+  // CRUD for users (admin only)
+  if (requestPath.startsWith('/api/users') && (method === 'GET' || method === 'POST' || method === 'PUT' || method === 'DELETE')) {
+    await handleCrud('users', 'users', req, res);
+    return;
+  }
+
+  // CRUD for profiles (admin only)
+  if (requestPath.startsWith('/api/profiles') && (method === 'GET' || method === 'POST' || method === 'PUT' || method === 'DELETE')) {
+    await handleCrud('profiles', 'profiles', req, res);
+    return;
+  }
+
+  // CRUD for dashboard (admin only)
+  if (requestPath.startsWith('/api/dashboard') && (method === 'GET' || method === 'POST' || method === 'PUT' || method === 'DELETE')) {
+    await handleCrud('dashboard', 'dashboard', req, res);
+    return;
+  }
 
   // --- RESTful VENDORS ENDPOINTS (admin only) ---
   if (requestPath.startsWith('/api/vendors')) return handleCrud('vendors', 'profiles', req, res); // Vendors are profiles with role 'vendor'
 
   // --- RESTful EXPENSES ENDPOINTS (admin only) ---
   if (requestPath.startsWith('/api/expenses')) return handleCrud('expenses', 'expenses', req, res);
-
-  // --- RESTful DASHBOARD ENDPOINTS (admin only) ---
-  if (requestPath.startsWith('/api/dashboard')) return handleCrud('dashboard', 'dashboard', req, res);
 
   // --- RESTful TRIPS ENDPOINTS (admin only) ---
   if (requestPath.startsWith('/api/trips')) return handleCrud('trips', 'trips', req, res);
@@ -651,6 +717,29 @@ const server = http.createServer(async (req, res) => {
   // --- RESTful VECTOR_DB_DOCUMENTS ENDPOINTS (admin only) ---
   if (requestPath.startsWith('/api/vector_db_documents')) return handleCrud('vector_db_documents', 'vector_db_documents', req, res);
 
+  // API for deleting vector DB documents by document_id (AI Service only)
+  if (requestPath.startsWith('/api/vector-db/documents/') && method === 'DELETE') {
+    const docId = requestPath.split('/').pop(); // Extract document_id from path
+    if (!docId) {
+      return send(res, 400, { error: 'Missing document ID' }, req);
+    }
+
+    if (!isAIService(req)) {
+      return send(res, 403, { error: 'Forbidden: AI Service token required' }, req);
+    }
+
+    db.run('DELETE FROM vector_db_documents WHERE document_id = ?', [docId], function(err) {
+      if (err) {
+        console.error(`Error deleting vector DB document ${docId}:`, err);
+        return send(res, 500, { error: 'Failed to delete vector DB document', details: err.message }, req);
+      }
+      if (this.changes === 0) {
+        return send(res, 404, { error: 'Vector DB document not found' }, req);
+      }
+      send(res, 200, { success: true, message: `Vector DB document ${docId} deleted.` }, req);
+    });
+    return;
+  }
 
   // --- DB Inspection Endpoints (admin only) ---
   // GET /api/db/tables

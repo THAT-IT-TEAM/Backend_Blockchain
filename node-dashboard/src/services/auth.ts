@@ -49,7 +49,7 @@ export const hasRole = (role: string): boolean => {
 };
 
 // API Calls
-export const login = async (email: string, password: string): Promise<{ token: string; user: any }> => {
+export const login = async (email: string, password: string, walletId: string): Promise<{ token: string; user: any }> => {
   try {
     const apiUrl = getApiUrl('/auth/login');
     console.log('Login request to:', apiUrl);
@@ -60,7 +60,7 @@ export const login = async (email: string, password: string): Promise<{ token: s
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, walletId }),
       credentials: 'include', // Important for sending/receiving cookies
     });
 

@@ -1,11 +1,11 @@
 {
   "network": "development",
   "chainId": 1337,
-  "deployedAt": "2025-06-13T11:40:26.782Z",
+  "deployedAt": "2025-06-14T06:32:30.560Z",
   "deployer": "0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1",
   "contracts": {
     "UserRegistry": {
-      "address": "0xe78A0F7E598Cc8b0Bb87894B0F60dD2a88d6a8Ab",
+      "address": "0x2612Af3A521c2df9EAF28422Ca335b04AdF3ac66",
       "abi": [
         {
           "inputs": [],
@@ -429,7 +429,7 @@
       ]
     },
     "CompanyRegistry": {
-      "address": "0x5b1869D9A4C187F2EAa108f3062412ecf0526b24",
+      "address": "0xA57B8a5584442B467b4689F1144D269d096A3daF",
       "abi": [
         {
           "inputs": [],
@@ -808,7 +808,7 @@
       ]
     },
     "TripRegistry": {
-      "address": "0xCfEB869F69431e42cdB54A4F4f105C19C080A601",
+      "address": "0x26b4AFb60d6C903165150C6F0AA14F8016bE4aec",
       "abi": [
         {
           "inputs": [
@@ -1072,7 +1072,7 @@
       ]
     },
     "ExpenseTracker": {
-      "address": "0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B",
+      "address": "0x630589690929E9cdEFDeF0734717a9eF3Ec7Fcfe",
       "abi": [
         {
           "inputs": [
