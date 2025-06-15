@@ -35,8 +35,7 @@ contract CompanyRegistry {
     function registerCompany(
         address companyAddress,
         string memory name,
-        string memory category,
-        string memory contactInfo
+        string memory category
     ) external onlyAdmin {
         require(companyAddress != address(0), "Invalid company address");
         require(!companies[companyAddress].isActive, "Company already registered");
@@ -45,7 +44,7 @@ contract CompanyRegistry {
             companyAddress: companyAddress,
             name: name,
             category: category,
-            contactInfo: contactInfo,
+            contactInfo: "",
             isActive: true,
             registrationTime: block.timestamp,
             totalTransactions: 0,

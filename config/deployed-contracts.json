@@ -1,11 +1,11 @@
 {
   "network": "development",
   "chainId": 1337,
-  "deployedAt": "2025-06-14T11:45:22.331Z",
+  "deployedAt": "2025-06-15T08:20:37.370Z",
   "deployer": "0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1",
   "contracts": {
     "UserRegistry": {
-      "address": "0xBc53027c52B0Ee6ad90347b8D03A719f30d9d7aB",
+      "address": "0xe78A0F7E598Cc8b0Bb87894B0F60dD2a88d6a8Ab",
       "abi": [
         {
           "inputs": [],
@@ -429,7 +429,7 @@
       ]
     },
     "CompanyRegistry": {
-      "address": "0x8c634b72fF5d6A9F6a0281EEF36365E4db8bDF8d",
+      "address": "0x5b1869D9A4C187F2EAa108f3062412ecf0526b24",
       "abi": [
         {
           "inputs": [],
@@ -773,18 +773,13 @@
               "internalType": "string",
               "name": "category",
               "type": "string"
-            },
-            {
-              "internalType": "string",
-              "name": "contactInfo",
-              "type": "string"
             }
           ],
           "name": "registerCompany",
           "outputs": [],
           "stateMutability": "nonpayable",
           "type": "function",
-          "signature": "0xd587d6f6"
+          "signature": "0x8e58238c"
         },
         {
           "inputs": [
@@ -808,7 +803,7 @@
       ]
     },
     "TripRegistry": {
-      "address": "0x959306A913D041D4f634310f6aD3789cBF0e9b18",
+      "address": "0xCfEB869F69431e42cdB54A4F4f105C19C080A601",
       "abi": [
         {
           "inputs": [
@@ -1072,7 +1067,7 @@
       ]
     },
     "ExpenseTracker": {
-      "address": "0x01c4052ac7EEF0cbDdc83F3780149D52D4174776",
+      "address": "0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B",
       "abi": [
         {
           "inputs": [

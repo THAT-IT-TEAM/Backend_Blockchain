@@ -15,6 +15,25 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const DB_PATH = path.join(__dirname, 'data', 'app.db');
 const db = new sqlite3.Database(DB_PATH);
 
+const MimeTypes = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.wav': 'audio/wav',
+  '.mp4': 'video/mp4',
+  '.woff': 'application/font-woff',
+  '.ttf': 'application/font-ttf',
+  '.eot': 'application/vnd.ms-fontobject',
+  '.otf': 'application/font-otf',
+  '.wasm': 'application/wasm',
+  '.ico': 'image/x-icon',
+};
+
 // Load contract deployment info
 const DEPLOYED_CONTRACTS_PATH = path.join(__dirname, '../config/deployed-contracts.json');
 console.log(`DEBUG: Attempting to load deployed contracts from: ${DEPLOYED_CONTRACTS_PATH}`);
@@ -77,29 +96,83 @@ const allAsync = (sql, params = []) => {
 
 async function initializeDatabase() {
   try {
-// Ensure users table exists
-const USERS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  email TEXT UNIQUE,
-  password TEXT,
-  role TEXT
-);`;
+    // --- START UUID MIGRATION FOR USERS TABLE ---
+    let userColumns = await allAsync(`PRAGMA table_info(users);`);
+    let needsMigration = false;
+    let oldUsers = [];
+
+    if (userColumns.length > 0) {
+      const idColumn = userColumns.find(col => col.name === 'id');
+      if (idColumn && idColumn.type === 'INTEGER') {
+        needsMigration = true;
+        console.log('DEBUG: Users table ID is INTEGER. Migration needed.');
+      } else {
+        console.log('DEBUG: Users table ID is TEXT. No migration needed.');
+      }
+    } else {
+      console.log('DEBUG: Users table does not exist. Will create with TEXT PRIMARY KEY.');
+    }
+
+    if (needsMigration) {
+      console.log('DEBUG: Starting users table migration from INTEGER to TEXT UUIDs.');
+      await runAsync('BEGIN TRANSACTION;');
+      try {
+        oldUsers = await allAsync('SELECT id, email, password, role FROM users;');
+        
+        await runAsync('ALTER TABLE users RENAME TO users_old;');
+
+        const NEW_USERS_TABLE_SQL = `CREATE TABLE users (
+          id TEXT PRIMARY KEY,
+          email TEXT UNIQUE,
+          password TEXT,
+          role TEXT
+        );`;
+        await runAsync(NEW_USERS_TABLE_SQL);
+
+        for (const oldUser of oldUsers) {
+          const newUserId = uuidv4();
+          await runAsync('INSERT INTO users (id, email, password, role) VALUES (?, ?, ?, ?)', [newUserId, oldUser.email, oldUser.password, oldUser.role]);
+          // Update profiles, expenses, project_members that reference user_id
+          await runAsync('UPDATE profiles SET user_id = ? WHERE user_id = ?', [newUserId, oldUser.id]);
+          await runAsync('UPDATE expenses SET user_id = ? WHERE user_id = ?', [newUserId, oldUser.id]);
+          await runAsync('UPDATE project_members SET user_id = ? WHERE user_id = ?', [newUserId, oldUser.id]);
+        }
+
+        await runAsync('DROP TABLE users_old;');
+        await runAsync('COMMIT;');
+        console.log('DEBUG: Users table migration completed successfully.');
+      } catch (migrateErr) {
+        await runAsync('ROLLBACK;');
+        console.error('ERROR: Users table migration failed:', migrateErr.message);
+        // Do not exit, allow subsequent steps to potentially re-create table
+      }
+    }
+    // --- END UUID MIGRATION FOR USERS TABLE ---
+
+    // Ensure users table exists
+    const USERS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE,
+      password TEXT,
+      role TEXT
+    );`;
     await runAsync(USERS_TABLE_SQL);
 
-  // Insert default admin if not exists
+    // Insert default admin if not exists
     let adminUser = await allAsync('SELECT * FROM users WHERE email = ?', ['admin@blockchain.com']);
     let walletId = null;
 
     if (adminUser.length === 0) {
-      // Insert admin user
-      const result = await runAsync('INSERT INTO users (email, password, role) VALUES (?, ?, ?)', ['admin@blockchain.com', 'admin123', 'admin']);
-      const userId = result.lastID;
+      // Insert admin user with UUID
+      const newAdminId = uuidv4(); // Generate UUID for new admin
+      const result = await runAsync('INSERT INTO users (id, email, password, role) VALUES (?, ?, ?, ?)', [newAdminId, 'admin@blockchain.com', 'admin123', 'admin']);
+      const userId = newAdminId; // Use newAdminId here
 
       // Create wallet
       const wallet = web3.eth.accounts.create();
       walletId = wallet.address;
 
-      // Insert into profiles (not users)
+      // Insert into profiles (not users) - ensure profiles.user_id is TEXT
       await runAsync('INSERT INTO profiles (user_id, wallet_id, email, role) VALUES (?, ?, ?, ?)', [userId, walletId, 'admin@blockchain.com', 'admin']);
 
       console.log("--------------------------------------------------");
@@ -110,6 +183,7 @@ const USERS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS users (
       console.log("--------------------------------------------------");
     } else {
       // If admin user already exists, fetch their wallet ID
+      // This should now fetch UUID from users table if migration happened
       const profile = await allAsync('SELECT wallet_id FROM profiles WHERE user_id = (SELECT id FROM users WHERE email = ?)', ['admin@blockchain.com']);
       if (profile.length > 0) {
         walletId = profile[0].wallet_id;
@@ -122,10 +196,10 @@ const USERS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS users (
       }
     }
 
-    // Ensure profiles table exists
+    // Ensure profiles table exists (user_id changed to TEXT)
     const PROFILES_TABLE_SQL = `CREATE TABLE IF NOT EXISTS profiles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER UNIQUE,
+      user_id TEXT UNIQUE,
       wallet_id TEXT,
       email TEXT,
       role TEXT DEFAULT 'user',
@@ -155,9 +229,10 @@ const USERS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS users (
     );`;
     await runAsync(FILES_TABLE_SQL);
 
-    // Ensure dashboard table exists
-    const DASHBOARD_TABLE_SQL = `CREATE TABLE IF NOT EXISTS dashboard (
-      supaId INTEGER PRIMARY KEY AUTOINCREMENT,
+    // Drop and recreate dashboard table to ensure correct schema for TEXT PRIMARY KEY
+    await runAsync('DROP TABLE IF EXISTS dashboard;');
+    const DASHBOARD_TABLE_SQL = `CREATE TABLE dashboard (
+      id TEXT PRIMARY KEY,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       vendorName TEXT NOT NULL,
       submittedBy TEXT NOT NULL,
@@ -168,10 +243,25 @@ const USERS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS users (
       amount TEXT NOT NULL,
       status TEXT NOT NULL,
       onChainHash TEXT NOT NULL,
-      actions TEXT NOT NULL,
-      id INTEGER NOT NULL
+      actions TEXT NOT NULL
     );`;
     await runAsync(DASHBOARD_TABLE_SQL);
+
+    // Drop and recreate trip_reports table to ensure correct schema
+    await runAsync('DROP TABLE IF EXISTS trip_reports;');
+    const TRIP_REPORTS_TABLE_SQL = `CREATE TABLE trip_reports (
+      id TEXT PRIMARY KEY,
+      trip_id TEXT NOT NULL,
+      report_name TEXT NOT NULL,
+      summary TEXT,
+      total_expenses_amount REAL,
+      generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_by_user_id TEXT NOT NULL,
+      status TEXT DEFAULT 'draft',
+      FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+    );`;
+    await runAsync(TRIP_REPORTS_TABLE_SQL);
 
     // Ensure expenses table exists
     const EXPENSES_TABLE_SQL = `CREATE TABLE IF NOT EXISTS expenses (
@@ -237,11 +327,11 @@ const USERS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS users (
     );`;
     await runAsync(TRIPS_TABLE_SQL);
 
-    // Ensure project_members table exists
+    // Ensure project_members table exists (user_id and project_id changed to TEXT)
     const PROJECT_MEMBERS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS project_members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id TEXT NOT NULL,
-      user_id INTEGER NOT NULL,
+      user_id TEXT NOT NULL,
       role TEXT DEFAULT 'member',
       assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (project_id) REFERENCES trips(id) ON DELETE CASCADE,
@@ -258,6 +348,61 @@ const USERS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS users (
       created_at TEXT DEFAULT (datetime('now'))
     );`;
     await runAsync(VECTOR_DB_DOCUMENTS_TABLE_SQL);
+
+    // Ensure companies table exists
+    const COMPANIES_TABLE_SQL = `CREATE TABLE IF NOT EXISTS companies (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      address TEXT UNIQUE NOT NULL,
+      category TEXT,
+      registered_at TEXT DEFAULT (datetime('now'))
+    );`;
+    await runAsync(COMPANIES_TABLE_SQL);
+
+    // Ensure a default company is registered on the blockchain and in the local DB
+    if (CompanyRegistry) {
+      try {
+        // Use getAllCompanies to check count, as getCompanyCount is not a function
+        const allCompanies = await CompanyRegistry.methods.getAllCompanies().call();
+        const companyCount = allCompanies.length.toString(); // Convert to string as it was compared to '0'
+
+        if (companyCount === '0') { // CompanyCount returns a string from web3.js
+          console.log('DEBUG: No companies registered on blockchain. Registering a default company...');
+          const accounts = await web3.eth.getAccounts();
+          if (accounts.length < 2) {
+            console.error('ERROR: Not enough Ethereum accounts available to register company. Need at least 2 for deployer and company address.');
+          } else {
+            const deployerAccount = accounts[0];
+            const defaultCompanyAddress = accounts[1]; // Use the second Ganache account as the company address
+            const companyName = 'Default Company';
+            const companyCategory = 'Technology';
+
+            const tx = await CompanyRegistry.methods.registerCompany(
+              defaultCompanyAddress,
+              companyName,
+              companyCategory
+            ).send({ from: deployerAccount, gas: 500000 });
+            console.log(`DEBUG: Default company "${companyName}" registered on blockchain. Transaction hash: ${tx.transactionHash}`);
+            console.log(`DEBUG: Default company address: ${defaultCompanyAddress}`);
+
+            // Store the default company in the local database as well
+            await runAsync(
+              'INSERT OR IGNORE INTO companies (id, name, address, category) VALUES (?, ?, ?, ?)',
+              [uuidv4(), companyName, defaultCompanyAddress, companyCategory]
+            );
+            console.log('DEBUG: Default company added to local database.');
+            console.log('DEBUG: Default company stored in local DB with address:', defaultCompanyAddress);
+          }
+        } else {
+          console.log(`DEBUG: ${companyCount} companies already registered on blockchain. Skipping default registration.`);
+        }
+      } catch (companyRegError) {
+        console.error('ERROR: Failed to check or register default company on blockchain:', companyRegError.message);
+        console.error('Blockchain company registration error stack:', companyRegError.stack);
+      }
+    } else {
+      console.error('ERROR: CompanyRegistry contract not initialized. Cannot check or register companies.');
+    }
 
     // Ensure file storage buckets exist
     const uploadsDir = path.join(__dirname, 'uploads');
@@ -354,7 +499,7 @@ db.all(`PRAGMA table_info(expenses);`, (err, columns) => {
 
 const PROFILES_TABLE_SQL = `CREATE TABLE IF NOT EXISTS profiles (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER UNIQUE,
+  user_id TEXT UNIQUE,
   wallet_id TEXT,
   email TEXT,
   role TEXT DEFAULT 'user',
@@ -417,7 +562,7 @@ db.run(TRIPS_TABLE_SQL);
 const PROJECT_MEMBERS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS project_members (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id TEXT NOT NULL,
-  user_id INTEGER NOT NULL,
+  user_id TEXT NOT NULL,
   role TEXT DEFAULT 'member',
   assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (project_id) REFERENCES trips(id) ON DELETE CASCADE,
@@ -433,15 +578,6 @@ const VECTOR_DB_DOCUMENTS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS vector_db_docu
   created_at TEXT DEFAULT (datetime('now'))
 );`;
 db.run(VECTOR_DB_DOCUMENTS_TABLE_SQL);
-
-// Ensure file storage buckets exist
-const uploadsDir = path.join(__dirname, 'uploads');
-['data-storage', 'images', 'web-frontend'].forEach(bucket => {
-  const bucketPath = path.join(uploadsDir, bucket);
-  if (!fs.existsSync(bucketPath)) {
-    fs.mkdirSync(bucketPath, { recursive: true });
-  }
-});
 
 // --- Logging function (copy from start-api.js for consistency) ---
 function log(service, message, color) {
@@ -474,11 +610,12 @@ async function startNgrok(port) {
 }
 
 function getOrigin(req) {
-  // Allow only the dashboard origin
-  const allowedOrigin = 'http://localhost:3001';
   const origin = req.headers.origin;
-  if (origin === allowedOrigin) return allowedOrigin;
-  return '';
+  // Allow any origin if it's explicitly provided in the request header
+  // In a production environment, you would want to restrict this to known origins.
+  if (origin) return origin;
+  // Fallback to localhost if no origin header is provided (e.g., direct API calls without a browser)
+  return 'http://localhost:3001';
 }
 
 function send(res, status, data, req) {
@@ -551,12 +688,19 @@ const server = http.createServer(async (req, res) => {
     const body = await parseBody(req);
     if (!body.email || !body.password || !body.role) return send(res, 400, { error: 'Missing fields' }, req);
     try {
-      // 1. Insert user (no wallet_id)
-      let userId;
+      const newUserId = uuidv4(); // Generate UUID here
+      console.log(`DEBUG: Register - Generated newUserId: ${newUserId}`);
+
+      // 1. Insert user with UUID
       await new Promise((resolve, reject) => {
-        db.run('INSERT INTO users (email, password, role) VALUES (?, ?, ?)', [body.email, body.password, body.role], function(err) {
-          if (err) return reject(err);
-          userId = this.lastID;
+        const userInsertValues = [newUserId, body.email, body.password, body.role];
+        console.log(`DEBUG: Register - Inserting user with values: ${userInsertValues.join(', ')}`);
+        db.run('INSERT INTO users (id, email, password, role) VALUES (?, ?, ?, ?)', userInsertValues, function(err) {
+          if (err) {
+            console.error(`ERROR: Register - User insert failed: ${err.message}`);
+            return reject(err);
+          }
+          console.log(`DEBUG: Register - User inserted successfully.`);
           resolve();
         });
       });
@@ -564,17 +708,25 @@ const server = http.createServer(async (req, res) => {
       // 2. Create wallet
       const wallet = web3.eth.accounts.create();
       const walletId = wallet.address;
+      console.log(`DEBUG: Register - Generated walletId: ${walletId}`);
 
-      // 3. Insert into profiles (not users)
+      // 3. Insert into profiles (not users) using the generated UUID
       await new Promise((resolve, reject) => {
-        db.run('INSERT INTO profiles (user_id, wallet_id, email, role) VALUES (?, ?, ?, ?)', [userId, walletId, body.email, body.role], function(err) {
-          if (err) return reject(err);
+        const profileInsertValues = [newUserId, walletId, body.email, body.role];
+        console.log(`DEBUG: Register - Inserting profile with values: ${profileInsertValues.join(', ')}`);
+        db.run('INSERT INTO profiles (user_id, wallet_id, email, role) VALUES (?, ?, ?, ?)', profileInsertValues, function(err) {
+          if (err) {
+            console.error(`ERROR: Register - Profile insert failed: ${err.message}`);
+            return reject(err);
+          }
+          console.log(`DEBUG: Register - Profile inserted successfully.`);
           resolve();
         });
       });
 
-      return send(res, 201, { success: true, userId, walletId }, req);
+      return send(res, 201, { success: true, userId: newUserId, walletId }, req);
     } catch (e) {
+      console.error(`ERROR: Register - Overall registration failed: ${e.message}`);
       return send(res, 400, { error: 'User already exists or DB error', details: e.message }, req);
     }
   }
@@ -600,6 +752,9 @@ const server = http.createServer(async (req, res) => {
 
       // Now, verify wallet ID from profiles table
       db.get('SELECT wallet_id FROM profiles WHERE user_id = ?', [user.id], (err, profile) => {
+        console.log(`DEBUG: Login - Frontend walletId: ${walletId}`);
+        console.log(`DEBUG: Login - User ID: ${user.id}`);
+        console.log(`DEBUG: Login - Stored profile.wallet_id: ${profile ? profile.wallet_id : 'N/A'}`);
         if (err || !profile || profile.wallet_id !== walletId) {
           console.log(`Login attempt for ${email}: Wallet ID mismatch or profile not found.`);
           return send(res, 401, { error: 'Invalid wallet ID' }, req);
@@ -622,14 +777,53 @@ const server = http.createServer(async (req, res) => {
     }
 
     try {
+      const aiServiceUserId = 'ai-service-user';
+      const aiServiceEmail = 'ai-service@blockchain.com';
+      const aiServiceRole = 'ai-service';
+
+      // 1. Ensure ai-service user exists in users table
+      let aiUser = await allAsync('SELECT * FROM users WHERE id = ?', [aiServiceUserId]);
+      if (aiUser.length === 0) {
+        console.log('DEBUG: Creating ai-service user in users table...');
+        await runAsync('INSERT INTO users (id, email, password, role) VALUES (?, ?, ?, ?)', [aiServiceUserId, aiServiceEmail, uuidv4(), aiServiceRole]);
+        console.log('DEBUG: ai-service user created.');
+      }
+
+      // 2. Ensure ai-service user has a profile with a wallet_id
+      let aiProfile = await allAsync('SELECT * FROM profiles WHERE user_id = ?', [aiServiceUserId]);
+      let aiWalletId = null;
+
+      // Get available accounts from web3 (Ganache)
+      const accounts = await web3.eth.getAccounts();
+      console.log('DEBUG: Available Ganache accounts:', accounts);
+      if (accounts.length === 0) {
+        throw new Error('No Ethereum accounts found. Please ensure Ganache is running and connected.');
+      }
+      const defaultGanacheAccount = accounts[0];
+
+      if (aiProfile.length === 0) {
+        console.log('DEBUG: Creating ai-service profile and wallet with default Ganache account...');
+        aiWalletId = defaultGanacheAccount;
+        await runAsync('INSERT INTO profiles (user_id, wallet_id, email, role) VALUES (?, ?, ?, ?)', [aiServiceUserId, aiWalletId, aiServiceEmail, aiServiceRole]);
+        console.log('DEBUG: ai-service profile with new wallet created.');
+      } else if (aiProfile[0].wallet_id !== defaultGanacheAccount) {
+        console.log('DEBUG: ai-service profile exists but wallet_id is different. Updating to default Ganache account...');
+        aiWalletId = defaultGanacheAccount;
+        await runAsync('UPDATE profiles SET wallet_id = ? WHERE user_id = ?', [aiWalletId, aiServiceUserId]);
+        console.log('DEBUG: ai-service profile updated with default Ganache wallet.');
+      } else {
+        aiWalletId = aiProfile[0].wallet_id;
+        console.log('DEBUG: Reusing existing ai-service wallet_id (already matches Ganache account):', aiWalletId);
+      }
+
       // Generate a long-lived token for AI services
       const aiServiceToken = jwt.sign(
-        { id: 'ai-service-user', email: 'ai-service@blockchain.com', role: 'ai-service' },
+        { id: aiServiceUserId, email: aiServiceEmail, role: aiServiceRole },
         JWT_SECRET,
         { expiresIn: '100y' } // Token valid for 100 years, practically permanent
       );
       log('Auth', 'AI Service Token generated successfully.', 'green');
-      return send(res, 200, { token: aiServiceToken }, req);
+      return send(res, 200, { token: aiServiceToken, walletId: aiWalletId }, req); // Also return the walletId
     } catch (e) {
       log('Auth', `Error generating AI Service Token: ${e.message}`, 'red');
       return send(res, 500, { error: 'Failed to generate AI Service Token', details: e.message }, req);
@@ -706,7 +900,52 @@ const server = http.createServer(async (req, res) => {
   // Generic CRUD for all tables (admin only)
   async function handleCrud(routePrefix, table, req, res) {
     console.log(`handleCrud called for: routePrefix=${routePrefix}, table=${table}`);
-    if (!isAdmin(req)) return send(res, 403, { error: 'Forbidden' }, req);
+    const tokenPayload = verifyToken(req);
+    const userRole = tokenPayload ? tokenPayload.role : 'guest';
+
+    // Define tables accessible by non-admin users for read operations
+    const userAccessibleTables = ['trips', 'expenses', 'files', 'profiles', 'users', 'trip_reports'];
+
+    // Allow GET access for specific tables for non-admin users
+    if (req.method === 'GET' && userAccessibleTables.includes(table) && userRole !== 'admin') {
+      // Allow GET access, but filter by user_id if applicable
+      let sql = `SELECT * FROM ${table}`;
+      let params = [];
+      
+      if (table === 'trips' || table === 'expenses' || table === 'profiles') {
+        sql += ` WHERE user_id = ?`;
+        params.push(tokenPayload.id); // Filter by the user's own ID
+      } else if (table === 'files') {
+        sql += ` WHERE uploaded_by = ?`; // Assuming files are linked by user ID
+        params.push(tokenPayload.id);
+      }
+      
+      console.log(`DEBUG: handleCrud GET - User accessible table: ${table}`);
+      console.log(`DEBUG: handleCrud GET - SQL: ${sql}, Params: ${JSON.stringify(params)}`);
+
+      db.all(sql, params, (err, rows) => {
+        if (err) {
+          console.error(`ERROR: handleCrud GET for ${table} failed: ${err.message}`);
+          return send(res, 500, { error: 'Database error' }, req);
+        }
+        console.log(`DEBUG: handleCrud GET - Rows found for ${table}: ${rows.length}`);
+        console.log(`DEBUG: handleCrud GET - Data for ${table}: ${JSON.stringify(rows)}`);
+        return send(res, 200, { [table]: rows }, req);
+      });
+      return; // Handled, so exit
+    }
+
+    // For all other operations (POST, PUT, DELETE) and tables not in userAccessibleTables, require admin
+    // EXCEPT: allow AI service to POST to expenses
+    const debugIsAdmin = isAdmin(req);
+    const debugIsAIService = isAIService(req);
+    console.log(`DEBUG: Auth check in handleCrud: isAdmin=${debugIsAdmin}, isAIService=${debugIsAIService}, method=${req.method}, table=${table}`);
+
+    // Allow if admin, OR (AI service POST to expenses), OR (user PUT/PATCH their own expenses)
+    if (!debugIsAdmin && !(debugIsAIService && req.method === 'POST' && table === 'expenses') && !((userRole === 'user' && (req.method === 'PUT' || req.method === 'PATCH') && table === 'expenses'))) {
+      console.log(`Access denied: User with role ${userRole} attempted ${req.method} on ${table}. Admin required, or AI service for expenses POST, or user for own expense PUT/PATCH.`);
+      return send(res, 403, { error: 'Forbidden: Admin access required for this operation or table.' }, req);
+    }
 
     const parsedPath = url.parse(req.url).pathname;
     const parts = parsedPath.split('/').filter(p => p);
@@ -731,11 +970,18 @@ const server = http.createServer(async (req, res) => {
 
           // Special handling for /api/vendors to only show profiles with role 'vendor'
           if (table === 'profiles' && routePrefix === 'vendors') {
-            sql += ` WHERE role = 'vendor'`;
+            sql += ` WHERE role = 'vendor'`
           }
           
+          console.log(`DEBUG: handleCrud GET (Admin) - SQL: ${sql}, Params: ${JSON.stringify(params)}`);
+
           db.all(sql, params, (err, rows) => {
-            if (err) return send(res, 500, { error: 'Database error' }, req);
+            if (err) {
+              console.error(`ERROR: handleCrud GET (Admin) for ${table} failed: ${err.message}`);
+              return send(res, 500, { error: 'Database error' }, req);
+            }
+            console.log(`DEBUG: handleCrud GET (Admin) - Rows found for ${table}: ${rows.length}`);
+            console.log(`DEBUG: handleCrud GET (Admin) - Data for ${table}: ${JSON.stringify(rows)}`);
             return send(res, 200, { [table]: rows }, req);
           });
         }
@@ -743,88 +989,224 @@ const server = http.createServer(async (req, res) => {
       case 'POST':
         const body = await parseBody(req);
         if (!body || Object.keys(body).length === 0) return send(res, 400, { error: 'Missing body for POST' }, req);
-        const columns = Object.keys(body).join(', ');
-        const placeholders = Object.keys(body).map(() => '?').join(', ');
-        const values = Object.values(body);
-        db.run(`INSERT INTO ${table} (${columns}) VALUES (${placeholders})`, values, async function(err) {
-          if (err) return send(res, 400, { error: `Insert failed: ${err.message}` }, req);
-          // If creating a user, also create wallet and profile
-          if (table === 'users') {
-            const userId = this.lastID;
+
+        if (table === 'users') {
+          const newUserId = uuidv4(); // Generate UUID for the new user
+          const columns = `id, ${Object.keys(body).join(', ')}`; // Include 'id' column
+          const placeholders = `?, ${Object.keys(body).map(() => '?').join(', ')}`; // Add placeholder for 'id'
+          const values = [newUserId, ...Object.values(body)]; // Prepend UUID to values
+
+          db.run(`INSERT INTO ${table} (${columns}) VALUES (${placeholders})`, values, async function(err) {
+            if (err) return send(res, 400, { error: `Insert failed: ${err.message}` }, req);
+            // Use newUserId directly, as this.lastID is for INTEGER primary keys
             const wallet = web3.eth.accounts.create();
             const walletId = wallet.address;
             const email = body.email;
             const role = body.role || 'user';
             await new Promise((resolve, reject) => {
-              db.run('INSERT INTO profiles (user_id, wallet_id, email, role) VALUES (?, ?, ?, ?)', [userId, walletId, email, role], function(err) {
+              db.run('INSERT INTO profiles (user_id, wallet_id, email, role) VALUES (?, ?, ?, ?)', [newUserId, walletId, email, role], function(err) {
                 if (err) return reject(err);
                 resolve();
               });
             });
-            return send(res, 201, { id: userId, walletId, success: true }, req);
-          } else if (table === 'expenses') {
+            return send(res, 201, { id: newUserId, walletId, success: true }, req);
+          });
+        } else if (table === 'expenses') {
+          console.log('DEBUG: POST /api/expenses - Received body:', body);
+          const columns = Object.keys(body).join(', ');
+          const placeholders = Object.keys(body).map(() => '?').join(', ');
+          const values = Object.values(body);
+          console.log(`DEBUG: POST /api/expenses - SQL INSERT columns: (${columns}), placeholders: (${placeholders}), values: ${JSON.stringify(values)}`);
+
+          db.run(`INSERT INTO ${table} (${columns}) VALUES (${placeholders})`, values, async function(err) {
+            if (err) {
+              console.error('ERROR: Database insert failed for expenses:', err.message);
+              return send(res, 400, { error: `Insert failed: ${err.message}` }, req);
+            }
+            console.log('DEBUG: Database insert successful for expenses, lastID:', this.lastID);
+
             const userId = verifyToken(req).id;
+            console.log('DEBUG: Fetching wallet_id for user:', userId);
             db.get('SELECT wallet_id FROM profiles WHERE user_id = ?', [userId], async (err, profile) => {
               if (err || !profile || !profile.wallet_id) {
-                return send(res, 500, { error: 'User wallet not found for blockchain transaction.' }, req);
+                const errorMessage = 'User wallet not found for blockchain transaction.';
+                console.error('ERROR:', errorMessage, err ? err.message : 'No profile or wallet_id');
+                return send(res, 500, { error: errorMessage }, req);
               }
 
               const userWalletAddress = profile.wallet_id;
+              console.log('DEBUG: User wallet address:', userWalletAddress);
               
-              // Prepare data for blockchain transaction
-              const expenseAmount = web3.utils.toWei(body.amount.toString(), 'ether'); // Convert to Wei
+              const expenseAmount = (body.amount !== null && body.amount !== undefined && !isNaN(parseFloat(body.amount))) ? web3.utils.toWei(body.amount.toString(), 'ether') : web3.utils.toWei('0', 'ether');
               const expenseCategory = body.category || 'Uncategorized';
               const expenseDescription = body.description || '';
-              const receiptHash = body.document_id || 'no_receipt_hash'; // Assuming document_id can act as a receipt hash
+              const receiptHash = body.document_id || 'no_receipt_hash';
 
-              // For companyAddress, you'd ideally look up the company's address from your CompanyRegistry
-              // For now, let's use a placeholder or the deployer address if applicable.
-              // In a real scenario, you'd get this from your company management logic.
-              const companyAddress = CompanyRegistry ? CompanyRegistry.options.address : '0x0000000000000000000000000000000000000000'; // Placeholder
-
-              if (!ExpenseTracker) {
-                return send(res, 500, { error: 'ExpenseTracker contract not initialized.' }, req);
+              // Fetch the first registered company from the local database
+              const registeredCompanies = await allAsync('SELECT address FROM companies LIMIT 1');
+              let companyAddress = '0x0000000000000000000000000000000000000000'; // Default to zero address if no company found
+              if (registeredCompanies.length > 0) {
+                  companyAddress = registeredCompanies[0].address;
+                  console.log('DEBUG: Using registered company address:', companyAddress);
+              } else {
+                  console.warn('WARNING: No companies found in local DB. Ensure a company is registered on blockchain and in local DB.');
               }
 
-              try {
-                const gasPrice = await web3.eth.getGasPrice();
-                const gasLimit = 500000; // Estimate gas limit or use web3.eth.estimateGas
+              const expenseData = {
+                expenseAmount: expenseAmount,
+                expenseCategory: expenseCategory,
+                expenseDescription: expenseDescription,
+                receiptHash: receiptHash,
+                companyAddress: companyAddress // Use the fetched company address
+              };
+              console.log('DEBUG: Expense data prepared for blockchain:', expenseData);
 
-                const tx = await ExpenseTracker.methods.createExpense(
-                  companyAddress,
-                  expenseAmount,
-                  expenseCategory,
-                  expenseDescription,
-                  receiptHash
-                ).send({ from: userWalletAddress, gasPrice, gas: gasLimit });
+              console.log(`DEBUG: expenseAmount value: ${expenseAmount}, type: ${typeof expenseAmount}, parseFloat result: ${parseFloat(expenseAmount)}`);
 
-                const blockchainId = tx.transactionHash;
-                console.log(`Expense recorded on blockchain: ${blockchainId}`);
+              // Only attempt blockchain transaction if amount is greater than 0
+              if (parseFloat(expenseAmount) > 0) {
+                console.log('DEBUG: Attempting blockchain transaction...');
+                try {
+                  const gasPrice = await web3.eth.getGasPrice();
+                  const gasLimit = 500000; // Increased gas limit for potential complexity
+                  console.log(`DEBUG: Gas price: ${gasPrice} Gas limit: ${gasLimit}`);
 
-                db.run(`UPDATE expenses SET blockchain_id = ?, blockchain_status = 1 WHERE id = ?`, [blockchainId, this.lastID], (updateErr) => {
-                  if (updateErr) console.error('Failed to update expense with blockchain_id:', updateErr);
-                });
+                  const tx = ExpenseTracker.methods.createExpense(
+                    expenseData.companyAddress,
+                    expenseData.expenseAmount,
+                    expenseData.expenseCategory,
+                    expenseData.expenseDescription,
+                    expenseData.receiptHash
+                  );
 
-                return send(res, 201, { id: this.lastID, success: true, blockchainId }, req);
+                  const receipt = await tx.send({
+                    from: userWalletAddress,
+                    gasPrice: gasPrice,
+                    gas: gasLimit,
+                  });
+                  console.log('DEBUG: Blockchain transaction successful:', receipt.transactionHash);
 
-              } catch (blockchainError) {
-                console.error('Error interacting with blockchain for expense:', blockchainError);
-                // Optionally, update the DB with a failed blockchain status
-                db.run(`UPDATE expenses SET blockchain_status = -1 WHERE id = ?`, [this.lastID], (updateErr) => {
-                  if (updateErr) console.error('Failed to update expense with failed blockchain_status:', updateErr);
-                });
-                return send(res, 500, { error: 'Failed to record expense on blockchain', details: blockchainError.message }, req);
+                  // Update the local database with blockchain transaction details
+                  await runAsync('UPDATE expenses SET blockchain_status = ?, blockchain_id = ? WHERE id = ?', [1, receipt.transactionHash, body.id]);
+                  console.log('DEBUG: Local database updated with blockchain transaction hash.');
+
+                  send(res, 200, { message: 'Expense added and blockchain transaction successful', expenseId: body.id, transactionHash: receipt.transactionHash }, req);
+                } catch (blockchainError) {
+                  console.error('ERROR: Error interacting with blockchain for expense:', blockchainError.message);
+                  console.error('Blockchain error stack:', blockchainError);
+
+                  // Update local database to reflect blockchain transaction failure
+                  await runAsync('UPDATE expenses SET blockchain_status = ? WHERE id = ?', [2, body.id]); // 2 for blockchain failed
+                  send(res, 500, { error: 'Failed to record expense on blockchain', details: blockchainError.message }, req);
+                }
+              } else {
+                console.warn('WARNING: Expense amount is 0. Skipping blockchain transaction.');
+                // Update local database to reflect blockchain transaction skipped due to zero amount
+                await runAsync('UPDATE expenses SET blockchain_status = ? WHERE id = ?', [2, body.id]); // 2 for blockchain skipped/failed
+                send(res, 200, { message: 'Expense added to database, blockchain transaction skipped (amount is 0)', expenseId: body.id, transactionHash: null }, req);
               }
             });
+          });
+        } else if (table === 'trips') {
+            const newTripId = uuidv4();
+            const newBody = { id: newTripId, ...body };
+            const newColumns = Object.keys(newBody).join(', ');
+            const newPlaceholders = Object.keys(newBody).map(() => '?').join(', ');
+            const newValues = Object.values(newBody);
+            console.log('DEBUG: Trips POST - newBody:', newBody);
+            console.log('DEBUG: Trips POST - newColumns:', newColumns);
+            console.log('DEBUG: Trips POST - newPlaceholders:', newPlaceholders);
+            console.log('DEBUG: Trips POST - newValues:', newValues);
+            db.run(`INSERT INTO ${table} (${newColumns}) VALUES (${newPlaceholders})`, newValues, function(insertErr) {
+              if (insertErr) return send(res, 400, { error: `Insert failed: ${insertErr.message}` }, req);
+              
+              // DEBUG: Immediately fetch all trips after successful insertion
+              db.all(`SELECT * FROM trips`, [], (fetchErr, fetchedTrips) => {
+                if (fetchErr) {
+                  console.error('DEBUG: Error fetching all trips after POST:', fetchErr);
+                } else {
+                  console.log(`DEBUG: Trips in DB after POST (${fetchedTrips.length}): ${JSON.stringify(fetchedTrips)}`);
+                }
+              });
+
+              return send(res, 201, { id: newTripId, success: true }, req);
+            });
+          } else if (table === 'dashboard') {
+            const newDashboardId = body.id || uuidv4(); // Use provided ID or generate new UUID
+            const newBody = { id: newDashboardId, ...body };
+            const newColumns = Object.keys(newBody).join(', ');
+            const newPlaceholders = Object.keys(newBody).map(() => '?').join(', ');
+            const newValues = Object.values(newBody);
+            db.run(`INSERT INTO ${table} (${newColumns}) VALUES (${newPlaceholders})`, newValues, function(insertErr) {
+              if (insertErr) return send(res, 400, { error: `Insert failed: ${insertErr.message}` }, req);
+              return send(res, 201, { id: newDashboardId, success: true }, req);
+            });
+          } else if (table === 'trip_reports') {
+            const newReportId = uuidv4();
+            const createdByUserId = verifyToken(req).id; // Get user ID from token
+            if (!createdByUserId || userRole !== 'admin') {
+              return send(res, 403, { error: 'Forbidden: Only admins can create trip reports.' }, req);
+            }
+            const newBody = { id: newReportId, ...body, created_by_user_id: createdByUserId };
+
+            // Calculate total_expenses_amount for the report from associated trip expenses
+            let totalExpensesAmount = 0;
+            if (newBody.trip_id) {
+              try {
+                const tripExpenses = await allAsync('SELECT amount FROM expenses WHERE trip_id = ?', [newBody.trip_id]);
+                totalExpensesAmount = tripExpenses.reduce((sum, expense) => sum + (parseFloat(expense.amount) || 0), 0);
+                newBody.total_expenses_amount = totalExpensesAmount;
+              } catch (e) {
+                console.error(`ERROR: Failed to calculate total expenses for trip ${newBody.trip_id}: ${e.message}`);
+                // Proceed without total_expenses_amount if calculation fails
+              }
+            }
+
+            const newColumns = Object.keys(newBody).join(', ');
+            const newPlaceholders = Object.keys(newBody).map(() => '?').join(', ');
+            const newValues = Object.values(newBody);
+            db.run(`INSERT INTO ${table} (${newColumns}) VALUES (${newPlaceholders})`, newValues, function(insertErr) {
+              if (insertErr) return send(res, 400, { error: `Insert failed: ${insertErr.message}` }, req);
+              return send(res, 201, { id: newReportId, success: true, total_expenses_amount: totalExpensesAmount }, req);
+            });
           } else {
-          return send(res, 201, { id: this.lastID, success: true }, req);
+            // Generic handling for other tables if needed
+            const columns = Object.keys(body).join(', ');
+            const placeholders = Object.keys(body).map(() => '?').join(', ');
+            const values = Object.values(body);
+            db.run(`INSERT INTO ${table} (${columns}) VALUES (${placeholders})`, values, function(err) {
+                if (err) return send(res, 400, { error: `Insert failed: ${err.message}` }, req);
+                return send(res, 201, { id: this.lastID, success: true }, req);
+            });
           }
-        });
         break;
       case 'PUT':
         if (!id) return send(res, 400, { error: 'Missing ID for PUT' }, req);
         const putBody = await parseBody(req);
         if (!putBody || Object.keys(putBody).length === 0) return send(res, 400, { error: 'Missing body for PUT' }, req);
+        
+        // Retrieve the user_id of the record to be updated to ensure ownership, only for relevant tables
+        if (table === 'expenses') { // Apply this check only for the 'expenses' table
+          console.log(`DEBUG: Inside user ownership check for PUT/PATCH. Table: ${table}, Condition (table === 'expenses'): ${table === 'expenses'}`);
+          const existingRecord = await new Promise((resolve, reject) => {
+            db.get(`SELECT user_id FROM ${table} WHERE id = ?`, [id], (err, row) => {
+              if (err) return reject(err);
+              resolve(row);
+            });
+          });
+
+          if (!existingRecord) {
+            return send(res, 404, { error: `${table} not found` }, req);
+          }
+
+          // Check if the current user is the owner of the record or an admin
+          const userIdFromToken = verifyToken(req).id;
+          if (existingRecord.user_id !== userIdFromToken && userRole !== 'admin') {
+            console.log(`Access denied: User ${userIdFromToken} attempted to update ${table} ${id} owned by ${existingRecord.user_id}. Not admin.`);
+            return send(res, 403, { error: `Forbidden: You can only edit your own ${table} records.` }, req);
+          }
+        }
+
         const setClause = Object.keys(putBody).map(k => `${k} = ?`).join(', ');
         const putValues = [...Object.values(putBody), id];
         db.run(`UPDATE ${table} SET ${setClause} WHERE id = ?`, putValues, async function(err) {
@@ -835,6 +1217,64 @@ const server = http.createServer(async (req, res) => {
             try {
               await runAsync('UPDATE profiles SET role = ? WHERE user_id = ?', [putBody.role, id]);
               console.log(`Updated role for user_id ${id} in profiles table to ${putBody.role}`);
+            } catch (profileErr) {
+              console.error(`Failed to update profile role for user_id ${id}: ${profileErr.message}`);
+              // Do not send 500 error for profile update failure, as the main user update was successful.
+            }
+          }
+
+          return send(res, 200, { success: true }, req);
+        });
+        break;
+      case 'PATCH': // Add PATCH case to mirror PUT logic
+        if (!id) return send(res, 400, { error: 'Missing ID for PATCH' }, req);
+        const patchBody = await parseBody(req);
+        if (!patchBody || Object.keys(patchBody).length === 0) return send(res, 400, { error: 'Missing body for PATCH' }, req);
+
+        // Retrieve the user_id of the record to be updated to ensure ownership, only for relevant tables
+        if (table === 'expenses') { // Apply this check only for the 'expenses' table
+          console.log(`DEBUG: Inside user ownership check for PUT/PATCH. Table: ${table}, Condition (table === 'expenses'): ${table === 'expenses'}`);
+          const existingRecord = await new Promise((resolve, reject) => {
+            db.get(`SELECT user_id FROM ${table} WHERE id = ?`, [id], (err, row) => {
+              if (err) return reject(err);
+              resolve(row);
+            });
+          });
+
+          if (!existingRecord) {
+            return send(res, 404, { error: `${table} not found` }, req);
+          }
+
+          // Check if the current user is the owner of the record or an admin
+          const userIdFromToken = verifyToken(req).id;
+          if (existingRecord.user_id !== userIdFromToken && userRole !== 'admin') {
+            console.log(`Access denied: User ${userIdFromToken} attempted to update ${table} ${id} owned by ${existingRecord.user_id}. Not admin.`);
+            return send(res, 403, { error: `Forbidden: You can only edit your own ${table} records.` }, req);
+          }
+        } else if (table === 'trip_reports') {
+          // Admins can edit trip reports. If trip_id is updated, recalculate total expenses.
+          if (patchBody.trip_id) {
+            try {
+              const tripExpenses = await allAsync('SELECT amount FROM expenses WHERE trip_id = ?', [patchBody.trip_id]);
+              patchBody.total_expenses_amount = tripExpenses.reduce((sum, expense) => sum + (parseFloat(expense.amount) || 0), 0);
+            } catch (e) {
+              console.error(`ERROR: Failed to recalculate total expenses for trip ${patchBody.trip_id} during PATCH: ${e.message}`);
+            }
+          }
+          // Prevent created_by_user_id from being updated
+          delete patchBody.created_by_user_id;
+        }
+
+        const patchSetClause = Object.keys(patchBody).map(k => `${k} = ?`).join(', ');
+        const patchValues = [...Object.values(patchBody), id];
+        db.run(`UPDATE ${table} SET ${patchSetClause} WHERE id = ?`, patchValues, async function(err) {
+          if (err) return send(res, 400, { error: `Update failed: ${err.message}` }, req);
+          
+          // Special handling for users table to update the 'role' in the profiles table as well
+          if (table === 'users' && patchBody.role) {
+            try {
+              await runAsync('UPDATE profiles SET role = ? WHERE user_id = ?', [patchBody.role, id]);
+              console.log(`Updated role for user_id ${id} in profiles table to ${patchBody.role}`);
             } catch (profileErr) {
               console.error(`Failed to update profile role for user_id ${id}: ${profileErr.message}`);
               // Do not send 500 error for profile update failure, as the main user update was successful.
@@ -889,7 +1329,12 @@ const server = http.createServer(async (req, res) => {
   }
   // POST /api/files (multipart upload)
   if (requestPath === '/api/files' && method === 'POST') {
-    if (!isAdmin(req)) return send(res, 403, { error: 'Forbidden' }, req);
+    const tokenPayload = verifyToken(req);
+    if (!tokenPayload) {
+      return send(res, 401, { error: 'Unauthorized: No token provided or invalid token.' }, req);
+    }
+    const userId = tokenPayload.id; // Get the user ID from the token
+
     const form = new formidable.IncomingForm({ multiples: false, uploadDir: path.join(__dirname, 'uploads'), keepExtensions: true });
     form.parse(req, (err, fields, filesObj) => {
       console.log('DEBUG fields:', fields);
@@ -917,7 +1362,7 @@ const server = http.createServer(async (req, res) => {
       const destPath = path.join(bucketPath, originalFilename);
       fs.renameSync(filepath, destPath);
       console.log('[UPLOAD] Saved file to:', destPath);
-      db.run('INSERT INTO files (name, size, mimetype, uploaded_by, metadata) VALUES (?, ?, ?, ?, ?)', [originalFilename, file.size, file.mimetype, 1, JSON.stringify({ bucket })], function(err) {
+      db.run('INSERT INTO files (name, size, mimetype, uploaded_by, metadata) VALUES (?, ?, ?, ?, ?)', [originalFilename, file.size, file.mimetype, userId, JSON.stringify({ bucket })], function(err) {
         if (err) return send(res, 500, { error: 'Failed to save file to DB', details: err.message }, req);
         // Return the new file's ID and filename
         return send(res, 201, { success: true, id: this.lastID, filename: originalFilename }, req);
@@ -949,10 +1394,31 @@ const server = http.createServer(async (req, res) => {
 
   // DELETE /api/files/:id
   if (fileIdMatch && method === 'DELETE') {
-    if (!isAdmin(req)) return send(res, 403, { error: 'Forbidden' }, req);
+    const tokenPayload = verifyToken(req);
+    if (!tokenPayload) {
+      return send(res, 401, { error: 'Unauthorized: No token provided or invalid token.' }, req);
+    }
+    const userId = tokenPayload.id; // Get the user ID from the token
+
     const fileId = fileIdMatch[1];
     db.get('SELECT * FROM files WHERE id = ?', [fileId], (err, file) => {
-      if (err || !file) return send(res, 404, { error: 'File not found' }, req);
+      if (err) {
+        console.error(`ERROR: Failed to fetch file for deletion: ${err.message}`);
+        return send(res, 500, { error: 'Database error' }, req);
+      }
+      if (!file) {
+        return send(res, 404, { error: 'File not found' }, req);
+      }
+
+      console.log(`DEBUG: Delete File - file.uploaded_by: ${file.uploaded_by}, type: ${typeof file.uploaded_by}`);
+      console.log(`DEBUG: Delete File - userId from token: ${userId}, type: ${typeof userId}`);
+      console.log(`DEBUG: Delete File - user role: ${tokenPayload.role}`);
+
+      // Check if the user is authorized to delete this file (either admin or the uploader)
+      if (tokenPayload.role !== 'admin' && file.uploaded_by !== userId) {
+        return send(res, 403, { error: 'Forbidden: You can only delete files you have uploaded.' }, req);
+      }
+
       const bucket = (JSON.parse(file.metadata || '{}').bucket) || 'data-storage';
       const filePath = path.join(__dirname, 'uploads', bucket, file.name);
       // Delete file from disk
@@ -1073,18 +1539,6 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // Generic CRUD routes
-  const crudMatch = requestPath.match(/^\/api\/(users|profiles|expenses|trips|files|vendors|receipt_fraud_checks|vector_db_documents|project_members)(\/?.*)$/);
-  if (crudMatch) {
-    const table = crudMatch[1];
-    const routePrefix = crudMatch[1]; // Use the matched table name as routePrefix
-    // Special handling for the vendors route to map to profiles table
-    if (table === 'vendors') {
-      return handleCrud(routePrefix, 'profiles', req, res);
-    }
-    return handleCrud(routePrefix, table, req, res);
-  }
-
   // User Dashboard Summary
   if (requestPath === '/api/dashboard/user-summary' && method === 'GET') {
     const tokenPayload = verifyToken(req);
@@ -1151,6 +1605,67 @@ const server = http.createServer(async (req, res) => {
       return send(res, 500, { error: 'Failed to fetch user dashboard summary', details: e.message }, req);
     }
   }
+
+ // Get Expenses by Email (works for all roles, but users can only query their own expenses)
+ if (requestPath === '/api/expenses/by-email' && method === 'POST') {
+  const tokenPayload = verifyToken(req);
+  if (!tokenPayload) {
+    return send(res, 403, { error: 'Forbidden' }, req);
+  }
+
+  const body = await parseBody(req);
+  let targetEmail = body.email;
+
+  // Security check: If the user is not an admin, they can only query their own expenses.
+  // Overwrite targetEmail with the authenticated user's email from the token.
+  if (tokenPayload.role !== 'admin') {
+    targetEmail = tokenPayload.email;
+    console.log(`DEBUG: Non-admin user (${tokenPayload.email}) attempted to query expenses by email. Forcing query to their own email.`);
+  }
+
+  if (!targetEmail) {
+    return send(res, 400, { error: 'Missing email in request body' }, req);
+  }
+
+  try {
+    const user = await new Promise((resolve, reject) => {
+      db.get(`SELECT id FROM users WHERE email = ?`, [targetEmail], (err, row) => {
+        if (err) return reject(err);
+        resolve(row);
+      });
+    });
+
+    if (!user) {
+      return send(res, 404, { error: 'User not found' }, req);
+    }
+
+    const expenses = await new Promise((resolve, reject) => {
+      db.all(`SELECT * FROM expenses WHERE user_id = ? ORDER BY transaction_date DESC`, [user.id], (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows);
+      });
+    });
+    return send(res, 200, { expenses }, req);
+
+  } catch (e) {
+    console.error('Error fetching expenses by email:', e);
+    return send(res, 500, { error: 'Failed to fetch expenses by email', details: e.message }, req);
+  }
+}
+
+  // Generic CRUD routes
+  const crudMatch = requestPath.match(/^\/api\/(users|profiles|expenses|trips|files|vendors|receipt_fraud_checks|vector_db_documents|project_members|dashboard|trip_reports)(\/?.*)$/);
+  if (crudMatch) {
+    const table = crudMatch[1];
+    const routePrefix = crudMatch[1]; // Use the matched table name as routePrefix
+    // Special handling for the vendors route to map to profiles table
+    if (table === 'vendors') {
+      return handleCrud(routePrefix, 'profiles', req, res);
+    }
+    return handleCrud(routePrefix, table, req, res);
+  }
+
+  
 
   // Admin Dashboard Summary
   if (requestPath === '/api/dashboard/admin-summary' && method === 'GET') {
@@ -1497,6 +2012,78 @@ const server = http.createServer(async (req, res) => {
       console.error('Error adding project member:', e);
       return send(res, 500, { error: 'Failed to add project member', details: e.message }, req);
     }
+  }
+
+  // Get User ID by Email (Admin only)
+  if (requestPath === '/api/users/by-email' && method === 'GET') {
+    const authPayload = verifyToken(req);
+    if (!authPayload || authPayload.role !== 'admin') {
+      return send(res, 403, { error: 'Forbidden: Admin access required.' }, req);
+    }
+    const email = parsed.query.email;
+    if (!email) {
+      return send(res, 400, { error: 'Missing email query parameter.' }, req);
+    }
+
+    db.get(`SELECT id FROM users WHERE email = ?`, [email], (err, row) => {
+      if (err) {
+        console.error(`Error fetching user by email ${email}:`, err);
+        return send(res, 500, { error: 'Database error' }, req);
+      }
+      if (!row) {
+        return send(res, 404, { error: 'User not found' }, req);
+      }
+      return send(res, 200, { userId: row.id }, req);
+    });
+    return;
+  }
+
+  // API to get user ID by email (Admin only)
+  if (requestPath === '/api/users/id-by-email' && method === 'POST') {
+    if (!isAdmin(req)) {
+      return send(res, 403, { error: 'Forbidden: Admin access required to get user ID by email.' }, req);
+    }
+    const body = await parseBody(req);
+    const { email } = body;
+
+    console.log(`DEBUG: getUserIdByEmail - Request body: ${JSON.stringify(body)}`);
+
+    if (!email) {
+      return send(res, 400, { error: 'Missing email in request body' }, req);
+    }
+
+    db.get('SELECT id FROM users WHERE email = ?', [email], (err, row) => {
+      if (err) {
+        console.error(`ERROR: Failed to fetch user ID by email: ${err.message}`);
+        return send(res, 500, { error: 'Database error' }, req);
+      }
+      if (!row) {
+        return send(res, 404, { error: 'User not found' }, req);
+      }
+      return send(res, 200, { userId: row.id }, req);
+    });
+    return;
+  }
+
+  // Serve static files from the uploads directory
+  if (requestPath.startsWith('/uploads/')) {
+    const decodedRequestPath = decodeURIComponent(requestPath);
+    const filePath = path.join(__dirname, decodedRequestPath);
+    console.log(`Attempting to serve static file: ${filePath}`);
+    fs.readFile(filePath, (err, data) => {
+      if (err) {
+        console.error(`Error serving static file ${filePath}: ${err.message}`);
+        return send(res, 404, { error: 'File not found' }, req);
+      }
+      const contentType = MimeTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Access-Control-Allow-Origin': getOrigin(req),
+        'Access-Control-Allow-Credentials': 'true',
+      });
+      res.end(data);
+    });
+    return;
   }
 
   // No route matched

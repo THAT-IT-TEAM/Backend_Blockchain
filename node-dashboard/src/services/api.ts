@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import { getToken, clearToken } from './auth';
 
 // Point to our API server on port 3050
-const API_BASE_URL = 'http://localhost:3050';
+const API_BASE_URL = 'https://good-polecat-enormously.ngrok-free.app';
 
 class ApiService {
   private client: AxiosInstance;
@@ -37,7 +37,7 @@ class ApiService {
     // Add response interceptor to handle 401 errors
     this.client.interceptors.response.use(
       (response) => {
-        console.log('API Response:', response.config.url, response.status);
+        console.log('API Response:', response, response.status);
         return response;
       },
       (error) => {
@@ -94,6 +94,16 @@ class ApiService {
 
   async updateUser(id: string, userData: any) {
     return this.updateRecord('users', id, userData);
+  }
+
+  async getUserIdByEmail(email: string): Promise<{ userId: string }> {
+    try {
+      const response = await this.client.post('/api/users/id-by-email', { email });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching user ID by email:', error);
+      throw error;
+    }
   }
 
   // Expenses endpoints
@@ -265,12 +275,68 @@ class ApiService {
   // New Reports APIs
   async getUserReports() {
     const response = await this.client.get('/api/reports/user');
-    return response.data.expenses;
+    return response.data;
   }
 
   async getAdminReports() {
     const response = await this.client.get('/api/reports/admin');
-    return response.data.expenses;
+    return response.data;
+  }
+
+  // Trips Endpoints
+  async getTrips() {
+    const response = await this.client.get('/api/trips');
+    return response.data.trips;
+  }
+
+  async createTrip(tripData: any) {
+    const response = await this.client.post('/api/trips', tripData);
+    return response.data;
+  }
+
+  async updateTrip(id: string, tripData: any) {
+    const response = await this.client.put(`/api/trips/${id}`, tripData);
+    return response.data;
+  }
+
+  async deleteTrip(id: string) {
+    const response = await this.client.delete(`/api/trips/${id}`);
+    return response.data;
+  }
+
+  // Trip Reports endpoints
+  async getTripReports() {
+    const response = await this.client.get('/api/trip_reports');
+    return response.data.trip_reports; // Assuming the backend returns an object with a key 'trip_reports'
+  }
+
+  async getTripReportById(id: string) {
+    const response = await this.client.get(`/api/trip_reports/${id}`);
+    return response.data; // Assuming it returns the report directly
+  }
+
+  /**
+   * @description Admin only. Creates a new trip report.
+   */
+  async createTripReport(reportData: any) {
+    const response = await this.client.post('/api/trip_reports', reportData);
+    return response.data;
+  }
+
+  /**
+   * @description Admin only. Updates an existing trip report.
+   */
+  async updateTripReport(id: string, updates: any) {
+    const response = await this.client.patch(`/api/trip_reports/${id}`, updates); // Using PATCH for partial updates
+    return response.data;
+  }
+
+  /**
+   * @description Admin only. Deletes a trip report.
+   */
+  async deleteTripReport(id: string) {
+    const response = await this.client.delete(`/api/trip_reports/${id}`);
+    return response.data;
   }
 
   // New Project Teams APIs
