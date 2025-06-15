@@ -230,8 +230,7 @@ async function initializeDatabase() {
     await runAsync(FILES_TABLE_SQL);
 
     // Drop and recreate dashboard table to ensure correct schema for TEXT PRIMARY KEY
-    await runAsync('DROP TABLE IF EXISTS dashboard;');
-    const DASHBOARD_TABLE_SQL = `CREATE TABLE dashboard (
+    const DASHBOARD_TABLE_SQL = `CREATE TABLE IF NOT EXISTS dashboard (
       id TEXT PRIMARY KEY,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       vendorName TEXT NOT NULL,
@@ -248,8 +247,8 @@ async function initializeDatabase() {
     await runAsync(DASHBOARD_TABLE_SQL);
 
     // Drop and recreate trip_reports table to ensure correct schema
-    await runAsync('DROP TABLE IF EXISTS trip_reports;');
-    const TRIP_REPORTS_TABLE_SQL = `CREATE TABLE trip_reports (
+   
+    const TRIP_REPORTS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS trip_reports (
       id TEXT PRIMARY KEY,
       trip_id TEXT NOT NULL,
       report_name TEXT NOT NULL,

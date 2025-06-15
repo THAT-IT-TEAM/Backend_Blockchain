@@ -1,7 +1,7 @@
 {
   "network": "development",
   "chainId": 1337,
-  "deployedAt": "2025-06-15T08:20:37.370Z",
+  "deployedAt": "2025-06-15T11:38:18.881Z",
   "deployer": "0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1",
   "contracts": {
     "UserRegistry": {
